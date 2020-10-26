@@ -1,0 +1,648 @@
+---
+title: "Проект №1"
+output:
+    html_document:
+      theme: united
+      toc: true
+      toc_depth: 3
+      toc_float: true
+      number_section: true
+
+---
+
+```{css, echo=FALSE}
+.header-section-number::after {
+  content: ".";
+}
+```
+
+Список пакетов, используемых в работе:
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F)
+
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+#Для правильной компиляции необходимо скачать отсутсвующие пакеты
+if (!require(ggplot2)) install.packages("ggplot2")
+if (!require(dplyr)) install.packages("dplyr")
+if (!require(tidyr)) install.packages("tidyr")
+if (!require(readr)) install.packages("readr")
+if (!require(GGally)) install.packages("GGally")
+if (!require(cowplot)) install.packages("cowplot")
+if (!require(grid)) install.packages("grid")
+if (!require(qqplotr)) install.packages("qqplotr")
+if (!require(ggExtra)) install.packages("ggExtra")
+```
+
+
+```{r echo = T, warning=FALSE, message=FALSE, eval=TRUE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(readr)
+library(GGally)
+library(cowplot)
+library(grid)
+library(qqplotr)
+library(ggExtra)
+```
+# Создание функции для объединения данных
+Создадим функцию, которая будет объединять все датафреймы из указанной директории:
+
+```{r echo=TRUE, eval=T}
+dir_df <-  'C:\\RProject1\\'#Пожалуйста, впишите абсолютный путь до директории
+combine_df <- function(dir){
+  files_list <- list.files(path = dir, pattern = ".csv")
+  files_name <- paste0(dir, files_list)
+  df_list <- lapply(files_name, read.csv, header = T, encoding = "UTF-8")
+  df_full <- do.call(rbind, df_list)
+  return (df_full)
+}
+```
+Теперь можно объединить все датафреймы:
+
+```{r}
+df_all <- combine_df(dir_df)
+```
+## Чистка данных
+На первом этапе работы я оценивала качество данных датафрема. Во-первых, ознакомилась с типами переменных и их корректностью.
+
+```{r}
+str(df_all) #Структура данных
+all_na <- colSums(is.na(df_all)) #Общее количество пропущенных значений
+all_na
+```
+Определим задачи, которые необходимо выполнить, чтобы получить чистые и опрятные данные:
+
+1. Изменить тип переменной  "Rings" с строкового на дискретный.
+
+2. Изменить название переменной  "Sex..." и присвоить уровни фактора.
+
+3. Изменить тип переменной  "Length" с строкового на непрерывный.
+
+4. Решить, что делать с пропущенными значениями.
+
+\
+
+1) Переменная"Rings".
+
+Найдем и по возможности заменим некорректные значения в переменной :
+
+```{r}
+unique(df_all$Rings) #Некорректное значение - "девять", заменим его на "9"
+df_all$Rings <- gsub(pattern = "\\D+",replace = "9",df_all$Rings)
+```
+Изменим тип переменной:
+
+```{r}
+df_all$Rings <- as.integer(df_all$Rings)
+```
+2. Переменная "Sex...".
+
+Переименуем переменную:
+```{r}
+names(df_all)[names(df_all) == "Sex..1...male..2...female..3...uvenil."] <- "Maturity_Sex"
+```
+Найдем и по возможности заменим некорректные значения в переменной :
+
+```{r}
+unique(df_all$Maturity_Sex) #Некорректные значения: "male", "one", "three"
+df_all$Maturity_Sex[df_all$Maturity_Sex == "male" | df_all$Maturity_Sex == "one"] <- 1
+df_all$Maturity_Sex[df_all$Maturity_Sex == "three"] <- 3
+```
+Зададим уровни фактора:
+
+```{r}
+df_all$Maturity_Sex <- as.factor(df_all$Maturity_Sex)
+levels(df_all$Maturity_Sex) <- c("Male", "Female", "Uvenile")
+```
+3. Переменная "Length".
+
+Изменим тип переменной :
+
+```{r message=FALSE, warning=FALSE}
+df_all$Length <- as.numeric(df_all$Length)
+```
+В результате этого преобразования были созданы "NA", проверим, сколько всего теперь пропущенных значений:
+
+```{r}
+colSums(is.na(df_all))
+```
+Их количество увеличилось всего лишь на 1, поэтому я считаю, что это небольшая потеря.
+
+4. Пропущенные значения "NA":
+
+Так как у нас имеется довольно большое количество наблюдений, то мне кажется, можно пожертвовать этим небольшим количеством пропущенных значений для упрощения дальнейшей работы.
+
+```{r}
+df_all <- df_all %>% drop_na
+```
+
+# Беглый анализ данных при помощи EDA
+Теперь у нас опрятные данные, значит можно приступать к их анализу с помощью EDA.
+
+## График корреляции и поиск выбросов
+Построим график корреляции и боксплот для всех непрерывных перемнных, коими являются "Length", "Diameter", "Height", "Whole_weight", "Shucked_weight", "Viscera_weight", "Shell_weight".
+
+```{r}
+continuous_var <- df_all[, 3:9]
+ggpairs(continuous_var, corSize = 7)+
+  labs(title = "График корреляции для непрерывных переменных")+
+  theme_bw(base_size = 7)+
+  theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+```
+
+Из графика корреляции видно, что в перменной Height большая часть наблюдений меньше 0.4, и имеются два явных выброса. Разберемся откуда они с помощью графика боксплот, предварительно сгруппировав данные по переменной  Maturity_Sex:
+
+```{r}
+ggplot(df_all, aes(x = Maturity_Sex, y = Height))+
+  geom_boxplot()+
+  labs(title = "Боксплот для переменной  Height", x = "")+
+  theme_bw()+
+  theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+```
+
+Из данного графика стало ясно, что имеется по одному выбросу в группах "Male", "Female". Так как среди всех наблюдений выделяются только эти два, то можно их не использовать в дальнейшем анализе.
+
+```{r}
+#Перепишем датафрейм, исключив 2 выброса
+df_all <- df_all %>% filter(Height < 0.4) 
+```
+
+## Боксплот и график плотности распределения для непрерывных переменных.
+
+Построим боксплот и график плотности распределения для непрерывных переменных, сгруппированных по переменной  Maturity_Sex:
+
+```{r eval=FALSE}
+boxplot_length <- ggplot(df_all, aes(x = Length, y = -0.5))+
+  geom_boxplot(fill = "grey")+
+  geom_density(aes(x = Length),inherit.aes = FALSE)+
+  facet_grid(~Maturity_Sex)+
+  scale_y_continuous(breaks = seq(0, 6, by = 2))+
+  labs(title = "Length", y = "Density")+
+  theme_bw(base_size = 10)+
+  theme(panel.spacing = unit(1, "lines"), plot.title = element_text(face = "bold", size = 12))
+
+boxplot_diameter <- ggplot(df_all, aes(x = Diameter, y = -0.5))+
+  geom_boxplot(fill = "grey")+
+  geom_density(aes(x = Diameter),inherit.aes = FALSE)+
+  facet_grid(~Maturity_Sex)+
+  scale_y_continuous(breaks = seq(0, 6, by = 2))+
+  labs(title = "Diameter", y = "Density")+
+  theme_bw(base_size = 10)+
+  theme(panel.spacing = unit(1, "lines"), plot.title = element_text(face = "bold", size = 12))
+
+boxplot_height <- ggplot(df_all, aes(x = Height, y = -0.5))+
+  geom_boxplot(fill = "grey")+
+  geom_density(aes(x = Height),inherit.aes = FALSE)+
+  facet_grid(~Maturity_Sex)+
+  labs(title = "Height", y = "Density")+
+  theme_bw(base_size = 10)+
+  theme(panel.spacing = unit(1, "lines"), plot.title = element_text(face = "bold", size = 12))
+
+boxplot_wweight <- ggplot(df_all, aes(x = Whole_weight, y = -0.5))+
+  geom_boxplot(fill = "grey")+
+  geom_density(aes(x = Whole_weight),inherit.aes = FALSE)+
+  facet_grid(~Maturity_Sex)+
+  labs(title = "Whole weight", y = "Density", x = "Whole weight")+
+  scale_y_continuous(breaks = seq(0, 1.5, by = 0.5))+
+  theme_bw(base_size = 10)+
+  theme(panel.spacing = unit(1, "lines"), plot.title = element_text(face = "bold", size = 12))
+
+boxplot_shweight <- ggplot(df_all, aes(x = Shucked_weight, y = -0.5))+
+  geom_boxplot(fill = "grey")+
+  geom_density(aes(x = Shucked_weight),inherit.aes = FALSE)+
+  facet_grid(~Maturity_Sex)+
+  labs(title = "Shucked weight", y = "Density", x = "Shucked weight")+
+  scale_y_continuous(breaks = seq(0, 3, by = 1))+
+  theme_bw(base_size = 10)+
+  theme(panel.spacing = unit(1, "lines"), plot.title = element_text(face = "bold", size = 12))
+
+boxplot_vsweight <- ggplot(df_all, aes(x = Viscera_weight, y = -0.5))+
+  geom_boxplot(fill = "grey")+
+  geom_density(aes(x = Viscera_weight),inherit.aes = FALSE)+
+  facet_grid(~Maturity_Sex)+
+  labs(title = "Viscera weight", y = "Density", x = "Viscera weight")+
+  theme_bw(base_size = 10)+
+  theme(panel.spacing = unit(1, "lines"), plot.title = element_text(face = "bold", size = 12))
+
+boxplot_Shellweight <- ggplot(df_all, aes(x = Shell_weight, y = -0.5))+
+  geom_boxplot(fill = "grey")+
+  geom_density(aes(x = Shell_weight),inherit.aes = FALSE)+
+  facet_grid(~Maturity_Sex)+
+  labs(title = "Shell weight", y = "Density", x = "Shell weight")+
+  theme_bw(base_size = 10)+
+  theme(panel.spacing = unit(1, "lines"),  plot.title = element_text(face = "bold", size = 12))
+
+title <- ggdraw() +
+  draw_label("Боксплот и график плотности распределения для непрерывных переменных", fontface = "bold", size = 14)+
+  theme(plot.margin = margin(0, 0, 0, 10))
+
+
+plot_row <- plot_grid(boxplot_length, boxplot_diameter,  ncol = 1)
+plot_grid(title, plot_row,ncol =  1, rel_heights = c(0.1,1))
+plot_grid(boxplot_height, boxplot_wweight, ncol = 1)
+plot_grid(boxplot_shweight, boxplot_vsweight, ncol = 1)
+plot_grid(boxplot_Shellweight, NULL, ncol = 1)
+
+
+```
+
+```{r echo=FALSE}
+boxplot_length <- ggplot(df_all, aes(x = Length, y = -0.5))+
+  geom_boxplot(fill = "grey")+
+  geom_density(aes(x = Length),inherit.aes = FALSE)+
+  facet_grid(~Maturity_Sex)+
+  scale_y_continuous(breaks = seq(0, 6, by = 2))+
+  labs(title = "Length", y = "Density")+
+  theme_bw(base_size = 10)+
+  theme(panel.spacing = unit(1, "lines"), plot.title = element_text(face = "bold", size = 12))
+
+boxplot_diameter <- ggplot(df_all, aes(x = Diameter, y = -0.5))+
+  geom_boxplot(fill = "grey")+
+  geom_density(aes(x = Diameter),inherit.aes = FALSE)+
+  facet_grid(~Maturity_Sex)+
+  scale_y_continuous(breaks = seq(0, 6, by = 2))+
+  labs(title = "Diameter", y = "Density")+
+  theme_bw(base_size = 10)+
+  theme(panel.spacing = unit(1, "lines"), plot.title = element_text(face = "bold", size = 12))
+
+boxplot_height <- ggplot(df_all, aes(x = Height, y = -0.5))+
+  geom_boxplot(fill = "grey")+
+  geom_density(aes(x = Height),inherit.aes = FALSE)+
+  facet_grid(~Maturity_Sex)+
+  labs(title = "Height", y = "Density")+
+  theme_bw(base_size = 10)+
+  theme(panel.spacing = unit(1, "lines"), plot.title = element_text(face = "bold", size = 12))
+
+boxplot_wweight <- ggplot(df_all, aes(x = Whole_weight, y = -0.5))+
+  geom_boxplot(fill = "grey")+
+  geom_density(aes(x = Whole_weight),inherit.aes = FALSE)+
+  facet_grid(~Maturity_Sex)+
+  labs(title = "Whole weight", y = "Density", x = "Whole weight")+
+  scale_y_continuous(breaks = seq(0, 1.5, by = 0.5))+
+  theme_bw(base_size = 10)+
+  theme(panel.spacing = unit(1, "lines"), plot.title = element_text(face = "bold", size = 12))
+
+boxplot_shweight <- ggplot(df_all, aes(x = Shucked_weight, y = -0.5))+
+  geom_boxplot(fill = "grey")+
+  geom_density(aes(x = Shucked_weight),inherit.aes = FALSE)+
+  facet_grid(~Maturity_Sex)+
+  labs(title = "Shucked weight", y = "Density", x = "Shucked weight")+
+  scale_y_continuous(breaks = seq(0, 3, by = 1))+
+  theme_bw(base_size = 10)+
+  theme(panel.spacing = unit(1, "lines"), plot.title = element_text(face = "bold", size = 12))
+
+boxplot_vsweight <- ggplot(df_all, aes(x = Viscera_weight, y = -0.5))+
+  geom_boxplot(fill = "grey")+
+  geom_density(aes(x = Viscera_weight),inherit.aes = FALSE)+
+  facet_grid(~Maturity_Sex)+
+  labs(title = "Viscera weight", y = "Density", x = "Viscera weight")+
+  theme_bw(base_size = 10)+
+  theme(panel.spacing = unit(1, "lines"), plot.title = element_text(face = "bold", size = 12))
+
+boxplot_Shellweight <- ggplot(df_all, aes(x = Shell_weight, y = -0.5))+
+  geom_boxplot(fill = "grey")+
+  geom_density(aes(x = Shell_weight),inherit.aes = FALSE)+
+  facet_grid(~Maturity_Sex)+
+  labs(title = "Shell weight", y = "Density", x = "Shell weight")+
+  theme_bw(base_size = 10)+
+  theme(panel.spacing = unit(1, "lines"),  plot.title = element_text(face = "bold", size = 12))
+
+title <- ggdraw() +
+  draw_label("Боксплот для непрерывных переменных", fontface = "bold", size = 14)+
+  theme(plot.margin = margin(0, 0, 0, 10))
+
+
+plot_row <- plot_grid(boxplot_length, boxplot_diameter,  ncol = 1)
+plot_grid(title, plot_row,ncol =  1, rel_heights = c(0.1,1))
+plot_grid(boxplot_height, boxplot_wweight, ncol = 1)
+plot_grid(boxplot_shweight, boxplot_vsweight, ncol = 1)
+plot_grid(boxplot_Shellweight, NULL, ncol = 1)
+
+
+```
+
+## Столбчатый график для факторной переменной  Maturity_Sex.
+
+Оценим с помощью столбчатого графика количество моллюсков определенного пола и уровня зрелости:
+
+```{r}
+ggplot(df_all, aes(x = Maturity_Sex))+
+  geom_bar(fill = "grey", color = "black")+
+  geom_text(aes(label = ..count..), stat = "count", vjust = 1.5, colour = "black")+
+  labs(title = "Количество моллюсков", y = "Count", x = "")+
+  theme_bw()+
+  theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5), axis.title.x = element_blank())
+
+```
+
+## Гистограмма и график плотности распределения дискретной переменной  Rings.
+
+Посмотрим на распределение дискретной переменной "Rings" с помощью гистограммы и графика плотности распределения:
+
+```{r}
+ggplot(df_all, aes(x = Rings))+
+  geom_histogram(aes(y = ..density..), binwidth = 1, color = "black", fill = "grey")+
+  geom_density(adjust = 1.3, size = 1)+
+  labs(title = "График распределения количества колец у моллюсков", y = "Density")+
+  theme_bw()+
+  theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+```
+
+# расчет среднего значения и стандартного отклонения переменной  Length для моллюсков разного пола.
+
+```{r message=FALSE}
+mean_sd_length <- df_all %>% group_by(Maturity_Sex) %>% summarise(mean = mean(Length),
+                                                sd = sd(Length))
+mean_sd_length
+```
+
+# Расчет процента моллюсков, у которых значение переменной  "Height" не превышает 0.165.
+
+```{r}
+subset_heigth <- subset(df_all, df_all$Height <= 0.165 )
+perc_subset <- round((nrow(subset_heigth)/nrow(df_all)*100), 2)
+perc_subset
+```
+# расчет значения переменной  Length, которое больше, чем у 92% от всех наблюдений
+
+Для этого используем функцию 'quantile':
+
+```{r}
+q_Length <- quantile(df_all$Length, 0.92)
+q_Length
+```
+# Создание новой стандартизированной переменной  Length_z_scores
+
+```{r}
+df_all <- df_all %>% mutate(Length_z_scores = scale(df_all$Length))
+# Проверка на стандартизацию (значение среднего и стандартного отклонения должны быть равны 0 и 1 соотвественно)
+mean(scale(df_all$Length))
+sd(scale(df_all$Length))
+```
+
+# Сравнение диаметра моллюсков с числом колец 5 и 15:
+
+Для удобства создадим новые датафреймы для моллюсков с числом колец 5 и 15:
+
+```{r}
+diam_5 <- df_all %>%  group_by(Rings) %>% 
+  filter(Rings == 5)
+diam_15 <- df_all %>% group_by(Rings) %>% 
+  filter(Rings == 15)
+
+```
+
+Нулевая гипотеза такова, что диаметр раковин моллюсков с числом колец 5 и 15 не отличается. 
+
+Чтобы корректно сравнивать две выборки, необходимо проверить распределения на нормальность, а также подсчитать количество наблюдений в каждой выборке.
+
+Проверим распредления диаметров на нормальность с помощью Q-Qplot, графика плотности распределения (вместе с гистограммой):
+
+```{r}
+#Построим квантильный графики
+qq5 <- ggplot(diam_5, mapping = aes(sample = Diameter)) +
+  stat_qq_band() +
+  stat_qq_line() +
+  stat_qq_point() +
+  labs(title = "5 Rings", x = "Theoretical Quantiles", y = "Sample Quantiles")+
+  theme(plot.title = element_text(size = 12))+
+  theme_bw()
+
+qq15 <- ggplot(diam_5, mapping = aes(sample = Diameter)) +
+  stat_qq_band() +
+  stat_qq_line() +
+  stat_qq_point() +
+  labs(title = "15 Rings", x = "Theoretical Quantiles", y = "Sample Quantiles")+
+  theme(plot.title = element_text(size = 12))+
+  theme_bw()
+
+#Построим гистограммы и графики плотности распределения
+density_5 <- ggplot(diam_5, aes(x = Diameter))+
+  geom_histogram(aes(y = ..density..), binwidth = 0.005, fill = "grey", color = "black")+
+  geom_density()+
+  labs(y = "Count")+
+  theme_bw()
+density_15 <- ggplot(diam_15, aes(x = Diameter))+
+  geom_histogram(aes(y = ..density..), binwidth = 0.005, fill = "grey", color = "black")+
+  geom_density()+
+  labs(y = "Count")+
+  theme_bw()
+
+#Объединим и назовем графики
+title1 <- ggdraw() +
+  draw_label("Оценка нормальности распределений\n диаметра раковин моллюсков с числом колец 5 и 15", fontface = "bold", size = 13.5)+
+  theme(plot.margin = margin(0, 0, 0, 10))
+plot_row2 <- plot_grid(qq5, qq15, density_5, density_15, ncol = 2)
+qq_density_grid <- plot_grid(title1, plot_row2, ncol =  1, rel_heights = c(0.1,1))
+qq_density_grid
+
+
+```
+
+
+Смотря на графики, можно сказать, что распредления диаметров отклоняются от нормального распределения. 
+
+Подсчитаем количество наблюдений в каждой группе моллюсков с количеством колец 5 и 15.
+
+```{r}
+#Создадим датафрейм, в который запишем количество наблюдений
+data.frame("Mussels_5_Rings" = nrow(diam_5[, "Diameter"]), "Mussels_15_Rings" = nrow(diam_15[, "Diameter"]))
+```
+
+Количество наболюдений большое (больше 30), поэтому воспользуемся двухвыборочным тестом Стьюдента (с поправкой Уэлча на неравные дисперсии) для сравнения диаметра раковин моллюсков с количеством колец 5 и 15:
+
+```{r}
+t.test(diam_5$Diameter, diam_15$Diameter, paired = F)
+```
+
+Результаты  t-теста: t = -33.517, df = 195.6, p < 0,001.
+
+p-value меньше выбранного уровня значимости альфа = 0.05, поэтому мы можем отклонить нулевую гипотезу о равенстве средних и заключить, что разница между средними значениями статистически значима.
+
+# Выяснение взаимоотношений переменных Diameter и Whole_weight.
+
+Построим диаграмму рассеяния для переменных Diameter и Whole_weight.
+
+```{r message = FALSE, warning=FALSE}
+ggplot(df_all, aes(x = Diameter, y = Whole_weight))+
+  geom_point()+
+  geom_smooth()+
+  labs(title = "Диаграмма рассеяния для диаметра раковин\n и общего веса моллюсков", y = "Whole weight")+
+  theme_bw()+
+  theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+```
+
+Можно заметить, что наблюдается экспоненциальный рост массы с увеличением диаметра раковины. Это вполне логично, так как массу можно сравнить с объемом, а объем, как мы знаем, увеличивается в кубе с увеличением диаметра.
+
+Можно попробовать линеаризовать данную модель, возведя значения переменной  Diameter в куб.
+
+```{r  message=FALSE, warning=FALSE}
+df_all <- df_all %>% mutate(Diameter_converted = Diameter^3)
+# Посмотрим теперь на графики
+ggplot(df_all, aes(x = Diameter_converted, y = Whole_weight))+
+  geom_point()+
+  geom_smooth()+
+  labs(title = "Диаграмма рассеяния после траснформации\n переменной  Diameter", x = "Diameter^3", y = "Whole weight")+
+  theme_bw()+
+  theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+```
+
+Чтобы провести корреляционный анализ, нам нужно понять, какое распределение имеют наши переменные.
+
+Рассмотрим распределения переменных Diameter (после трансформации) и Whole_weight с помощью Q-Qplot, графика плотности распределения (вместе с гистограммой):
+
+```{r}
+#Построим квантильный графики
+qq_Diameter <- ggplot(df_all, mapping = aes(sample = Diameter_converted)) +
+  stat_qq_band() +
+  stat_qq_line() +
+  stat_qq_point() +
+  labs(title = "Diameter", x = "Theoretical Quantiles", y = "Sample Quantiles")+
+  theme(plot.title = element_text(size = 12))+
+  theme_bw()
+qq_Wh_weight <- ggplot(df_all, mapping = aes(sample = Whole_weight)) +
+  stat_qq_band() +
+  stat_qq_line() +
+  stat_qq_point() +
+  labs(title = "Whole weight", x = "Theoretical Quantiles", y = "Sample Quantiles")+
+  theme(plot.title = element_text(size = 12))+
+  theme_bw()
+
+#Построим гистограммы и графики плотности распределения
+density_Diameter <- ggplot(df_all, aes(x = Diameter_converted))+
+  geom_histogram(aes(y = ..density..),binwidth = 0.0085, fill = "grey", color = "black")+
+  geom_density()+
+  labs(y = "Count")+
+  theme_bw()
+density_Wh_weight <- ggplot(df_all, aes(x = Whole_weight))+
+  geom_histogram(aes(y = ..density..),binwidth = 0.09, fill = "grey", color = "black")+
+  geom_density()+
+  labs(y = "Count")+
+  theme_bw()
+
+#Объединим и назовем графики
+title3 <- ggdraw() +
+  draw_label("Оценка нормальности распределений\n диаметра раковин и общего веса", fontface = "bold", size = 13.5)+
+  theme(plot.margin = margin(0, 0, 0, 10))
+plot_row3 <- plot_grid(qq_Diameter, qq_Wh_weight, density_Diameter, density_Wh_weight, ncol = 2)
+qq_density_grid <- plot_grid(title3, plot_row3, ncol =  1, rel_heights = c(0.1,1))
+qq_density_grid
+```
+
+Применим корреляционный тест к переменным Diameter и Whole_weight также с учетом трансформации переменной Diameter. Используем коэффициент Спирмена, так как распределения данных отклоняются от нормального распределения.
+
+```{r message=FALSE, warning=FALSE}
+Diameter_Wweight_cortest <- df_all %>% mutate(Diameter_converted = Diameter^3) %>% 
+  summarise(cor_test_statistic = cor.test(Diameter, Whole_weight, 
+                                          method = "spearman")$estimate,
+            cor_test_p_value = cor.test(Diameter, Whole_weight, 
+                                        method = "spearman")$p.value)
+Diameter_Wweight_cortest
+```
+
+По результатам корреляционного анализа можно сделать вывод о том, что существует взаимосвязь между перменными Diameter и Whole_weight (rho = 0.97, p-value < 0.001).
+
+# Дополнительная часть.
+
+## Взаимосвязь перменных Diameter и Whole_weight в группах Male, Female, Uvenile.
+
+Мне любопытно было также посмотреть, какая взаимосвязь между этими переменными в группах Male, Female, Uvenile.
+
+Построим диаграмму рассеяния для переменных Diameter и Whole_weight, сгруппировав их по переменной  Maturity_Sex:
+
+```{r message = FALSE, warning=FALSE}
+ggplot(df_all, aes(x = Diameter, y = Whole_weight))+
+  geom_point()+
+  geom_smooth()+
+  facet_grid(~Maturity_Sex)+
+  labs(title = "Диаграмма рассеяния для диаметра и общего веса моллюсков", y = "Whole weight")+
+  theme_bw()+
+  theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+```
+
+Как видно из графика, в каждой группе также наблюдается экспоненциальный рост массы с увеличением диаметра раковины.
+
+Построим такой же график, но с трансформированной переменной  Diameter_converted.
+```{r message = FALSE, warning=FALSE}
+ggplot(df_all, aes(x = Diameter_converted, y = Whole_weight))+
+  geom_point()+
+  geom_smooth(method = lm)+
+  facet_grid(~Maturity_Sex)+
+  labs(title = "Диаграмма рассеяния после траснформации\n переменной  Diameter", y = "Whole weight", x = "Diameter^3")+
+  theme_bw()+
+  theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+```
+
+
+Построим графики плотности распределения для переменных Diameter (после трансформации) и Whole_weight, сгруппированных по переменной  Maturity_Sex:
+
+```{r}
+ggplot(df_all, aes(x = Diameter_converted, fill = Maturity_Sex, alpha = 0.5))+
+  geom_density()+
+  scale_fill_manual(values = c("#D00000", "#ef8a62", "#696969"))+
+  labs(title ="График плотности распределения\n трансформированной переменной  Diameter", y = "Density", x = "Diameter^3")+
+  scale_alpha(guide = 'none')+
+  theme_bw()+
+  theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+  
+ggplot(df_all, aes(x = Whole_weight, fill = Maturity_Sex, alpha = 0.5))+
+  geom_density()+
+  scale_fill_manual(values = c("#D00000", "#ef8a62", "#696969"))+
+  labs(title ="График плотности распределения переменной  Whole_weight", x = "Whole weight", y = "Density")+
+  scale_alpha(guide = 'none')+
+  theme_bw()+
+  theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+```
+
+Построим квантильные графики для переменных Diameter и Whole_weight, сгруппированных по переменной  Maturity_Sex:
+
+```{r}
+#Построим квантильные графики
+qq_Diameter_group <- ggplot(df_all, mapping = aes(sample = Diameter_converted)) +
+  stat_qq_band() +
+  stat_qq_line() +
+  stat_qq_point() +
+  facet_grid(~Maturity_Sex)+
+  labs(title = "Diameter", x = "Theoretical Quantiles", y = "Sample Quantiles")+
+  theme(plot.title = element_text(size = 12))+
+  theme_bw()
+qq_Wh_weight_group <- ggplot(df_all, mapping = aes(sample = Whole_weight)) +
+  stat_qq_band() +
+  stat_qq_line() +
+  stat_qq_point() +
+  facet_grid(~Maturity_Sex)+
+  labs(title = "Whole weight", x = "Theoretical Quantiles", y = "Sample Quantiles")+
+  theme(plot.title = element_text(size = 12))+
+  theme_bw()
+
+#Объединим и назовем графики
+title4 <- ggdraw() +
+  draw_label("Q-Qplot диаметра раковины и общего веса\n в зависимости от пола и зрелости", fontface = "bold", size = 13.5)+
+  theme(plot.margin = margin(0, 0, 0, 10))
+plot_row4 <- plot_grid(qq_Diameter_group, qq_Wh_weight_group, ncol = 1)
+qq_density_grid4 <- plot_grid(title4, plot_row4, ncol =  1, rel_heights = c(0.1,1))
+qq_density_grid4
+```
+
+В группах распределения также отклоняются от нормального, поэтому в корреляционном анализе также будем использовать коэффициент Спирмена. Применим корреляционный тест к переменным Diameter и Whole_weight также с учетом трансформации переменной Diameter и группировки по переменной  Maturity_Sex.
+
+```{r  message=FALSE, warning=FALSE}
+Diameter_Wweight_cortest_groups <- df_all %>% mutate(Diameter_converted = Diameter^3) %>% group_by(Maturity_Sex) %>% 
+  summarise(cor_test_statistic = cor.test(Diameter_converted, Whole_weight, method = "spearman")$estimate,
+            cor_test_p_value = cor.test(Diameter_converted, Whole_weight, method = "spearman")$p.value)
+Diameter_Wweight_cortest_groups
+```
+
+Исходя из полученных результатов, можно заключить, что имеется взаимосвязь между переменными Diameter и Whole_weight, при этом данная взаимосвязь сохраняется как в группах, так и во всей выборке. Это логично, так как если моллюск растет, то растет его масса и увеличивается диаметр раковины.
+
+
+
+
+
+
+
+                                  
+                                                
