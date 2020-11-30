@@ -27,12 +27,12 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
 #Для правильной компиляции необходимо скачать отсутсвующие пакеты
 if (!require(ggplot2)) install.packages("ggplot2")
 if (!require(dplyr)) install.packages("dplyr")
-if (!require(readr)) install.packages("MASS")
+if (!require(MASS)) install.packages("MASS")
 if (!require(GGally)) install.packages("GGally")
 if (!require(cowplot)) install.packages("cowplot")
 if (!require(qqplotr)) install.packages("qqplotr")
-if (!require(qqplotr)) install.packages("car")
-if (!require(qqplotr)) install.packages("nlme")
+if (!require(car)) install.packages("car")
+if (!require(nlme)) install.packages("nlme")
 ```
 
 
