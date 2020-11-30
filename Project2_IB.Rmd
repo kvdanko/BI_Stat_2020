@@ -1,0 +1,570 @@
+---
+title: "Проект №2"
+output:
+    html_document:
+      code_folding: show
+      theme: united
+      toc: true
+      toc_depth: 3
+      toc_float: true
+      number_section: true
+
+---
+
+```{css, echo=FALSE}
+.header-section-number::after {
+  content: ".";
+}
+```
+
+Список пакетов, используемых в работе:
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+#Для правильной компиляции необходимо скачать отсутсвующие пакеты
+if (!require(ggplot2)) install.packages("ggplot2")
+if (!require(dplyr)) install.packages("dplyr")
+if (!require(MASS)) install.packages("MASS")
+if (!require(GGally)) install.packages("GGally")
+if (!require(cowplot)) install.packages("cowplot")
+if (!require(qqplotr)) install.packages("qqplotr")
+if (!require(car)) install.packages("car")
+if (!require(nlme)) install.packages("nlme")
+```
+
+
+```{r echo = T, warning=FALSE, message=FALSE, eval=TRUE}
+library(qqplotr)
+library(MASS)
+library(GGally)
+library(ggplot2)
+library(car)
+library(dplyr)
+library(cowplot)
+library(nlme)
+```
+
+```{r echo = FALSE, warning=FALSE, message=FALSE, eval=TRUE}
+theme_set(theme_bw())
+```
+
+# Знакомство с данными
+Посмотрим на данные:
+```{r}
+data("Boston")
+str(Boston)
+```
+
+Для удобства переведем переменные chas и rad в факторные:
+```{r}
+Boston$chas <- as.factor(Boston$chas)
+Boston$rad <- as.factor(Boston$rad)
+```
+
+## Разведочный анализ данных 
+```{r}
+colSums(is.na(Boston)) # Пропущенных значений нет
+```
+
+Как известно данные Boston были подвергнуты цензуре и цены участков/домов, превышающие \$50,000, были приравнены к $50,000 (Gilley, 1996). Это видно также на графике зависимости цен (medv) от среднего количества комнат на дом/участок (rm).
+
+```{r}
+ggplot(Boston, aes(x = rm, y = medv)) +
+  geom_point()
+```
+
+Поэтому для дальнейшего анализа были использованы отфильтрованные данные, в которых цены на участки меньше $50,000.
+```{r}
+Boston <- Boston %>% filter(medv < 50)
+```
+
+### Поиск отскакивающих значений с помощью точечных диаграмм Кливленда.
+```{r eval=FALSE}
+gg_dot <- ggplot(Boston, aes(y = 1:nrow(Boston))) +
+  geom_point()
+p1 <- gg_dot + aes(x = crim) + labs(y = 'Порядковый номер \nв датасете', x = 'Значения переменной', title = "crim") + theme(axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10), plot.title = element_text(face = "bold", size = 12))
+
+p2 <- gg_dot + aes(x = zn) + labs(y = 'Порядковый номер \nв датасете', x = 'Значения переменной', title = "zn")+ theme(axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10), plot.title = element_text(face = "bold", size = 12))
+
+p3 <- gg_dot + aes(x = indus) + labs(y = 'Порядковый номер \nв датасете', x = 'Значения переменной', title = "indus")+ theme(axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10), plot.title = element_text(face = "bold", size = 12))
+
+p4 <- gg_dot + aes(x = chas) + labs(y = 'Порядковый номер \nв датасете', x = 'Значения переменной', title = "chas")+ theme(axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10), plot.title = element_text(face = "bold", size = 12))
+
+p5 <- gg_dot + aes(x = nox) + labs(y = 'Порядковый номер \nв датасете', x = 'Значения переменной', title = "nox") + theme(axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10), plot.title = element_text(face = "bold", size = 12))
+
+p6 <- gg_dot + aes(x = rm) + labs(y = 'Порядковый номер \nв датасете', x = 'Значения переменной', title = "rm") + theme(axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10), plot.title = element_text(face = "bold", size = 12))
+
+p7 <- gg_dot + aes(x = age) + labs(y = 'Порядковый номер \nв датасете', x = 'Значения переменной', title = "age") + theme(axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10), plot.title = element_text(face = "bold", size = 12))
+
+p8 <- gg_dot + aes(x = dis) + labs(y = 'Порядковый номер \nв датасете', x = 'Значения переменной', title = "dis") + theme(axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10), plot.title = element_text(face = "bold", size = 12))
+
+p9 <- gg_dot + aes(x = rad) + labs(y = 'Порядковый номер \nв датасете', x = 'Значения переменной', title = "rad") + theme(axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10), plot.title = element_text(face = "bold", size = 12))
+
+p10 <- gg_dot + aes(x = tax) + labs(y = 'Порядковый номер \nв датасете', x = 'Значения переменной', title = "tax") + theme(axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10), plot.title = element_text(face = "bold", size = 12))
+
+p11 <- gg_dot + aes(x = ptratio) + labs(y = 'Порядковый номер \nв датасете', x = 'Значения переменной', title = "ptratio") + theme(axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10), plot.title = element_text(face = "bold", size = 12))
+
+p12 <- gg_dot + aes(x = black) + labs(y = 'Порядковый номер \nв датасете', x = 'Значения переменной', title = "black") + theme(axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10), plot.title = element_text(face = "bold", size = 12))
+
+p13 <- gg_dot + aes(x = lstat) + labs(y = 'Порядковый номер \nв датасете', x = 'Значения переменной', title = "lstat") + theme(axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10), plot.title = element_text(face = "bold", size = 12))
+
+p14 <- gg_dot + aes(x = medv) + labs(y = 'Порядковый номер \nв датасете', x = 'Значения переменной', title = "medv") + theme(axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10), plot.title = element_text(face = "bold", size = 12))
+
+title <- ggdraw() +
+  draw_label("Точечные диаграммы Кливленда", fontface = "bold", size = 14)+
+  theme(plot.margin = margin(0, 0, 0, 10))
+plot_row <- plot_grid(p1,p2,p3,p4,ncol = 2)
+plot_grid(title, plot_row,ncol =  1, rel_heights = c(0.1,1))
+plot_grid(p5,p6,p7,p8, ncol = 2)
+plot_grid(p9,p10,p11,p12, ncol = 2)
+plot_grid(p13,p14, NULL, NULL, ncol = 2)
+
+```
+
+```{r echo=FALSE}
+gg_dot <- ggplot(Boston, aes(y = 1:nrow(Boston))) +
+  geom_point()
+p1 <- gg_dot + aes(x = crim) + labs(y = 'Порядковый номер \nв датасете', x = 'Значения переменной', title = "crim") + theme(axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10), plot.title = element_text(face = "bold", size = 12))
+
+p2 <- gg_dot + aes(x = zn) + labs(y = 'Порядковый номер \nв датасете', x = 'Значения переменной', title = "zn")+ theme(axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10), plot.title = element_text(face = "bold", size = 12))
+
+p3 <- gg_dot + aes(x = indus) + labs(y = 'Порядковый номер \nв датасете', x = 'Значения переменной', title = "indus")+ theme(axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10), plot.title = element_text(face = "bold", size = 12))
+
+p4 <- gg_dot + aes(x = chas) + labs(y = 'Порядковый номер \nв датасете', x = 'Значения переменной', title = "chas")+ theme(axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10), plot.title = element_text(face = "bold", size = 12))
+
+p5 <- gg_dot + aes(x = nox) + labs(y = 'Порядковый номер \nв датасете', x = 'Значения переменной', title = "nox") + theme(axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10), plot.title = element_text(face = "bold", size = 12))
+
+p6 <- gg_dot + aes(x = rm) + labs(y = 'Порядковый номер \nв датасете', x = 'Значения переменной', title = "rm") + theme(axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10), plot.title = element_text(face = "bold", size = 12))
+
+p7 <- gg_dot + aes(x = age) + labs(y = 'Порядковый номер \nв датасете', x = 'Значения переменной', title = "age") + theme(axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10), plot.title = element_text(face = "bold", size = 12))
+
+p8 <- gg_dot + aes(x = dis) + labs(y = 'Порядковый номер \nв датасете', x = 'Значения переменной', title = "dis") + theme(axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10), plot.title = element_text(face = "bold", size = 12))
+
+p9 <- gg_dot + aes(x = rad) + labs(y = 'Порядковый номер \nв датасете', x = 'Значения переменной', title = "rad") + theme(axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10), plot.title = element_text(face = "bold", size = 12))
+
+p10 <- gg_dot + aes(x = tax) + labs(y = 'Порядковый номер \nв датасете', x = 'Значения переменной', title = "tax") + theme(axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10), plot.title = element_text(face = "bold", size = 12))
+
+p11 <- gg_dot + aes(x = ptratio) + labs(y = 'Порядковый номер \nв датасете', x = 'Значения переменной', title = "ptratio") + theme(axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10), plot.title = element_text(face = "bold", size = 12))
+
+p12 <- gg_dot + aes(x = black) + labs(y = 'Порядковый номер \nв датасете', x = 'Значения переменной', title = "black") + theme(axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10), plot.title = element_text(face = "bold", size = 12))
+
+p13 <- gg_dot + aes(x = lstat) + labs(y = 'Порядковый номер \nв датасете', x = 'Значения переменной', title = "lstat") + theme(axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10), plot.title = element_text(face = "bold", size = 12))
+
+p14 <- gg_dot + aes(x = medv) + labs(y = 'Порядковый номер \nв датасете', x = 'Значения переменной', title = "medv") + theme(axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10), plot.title = element_text(face = "bold", size = 12))
+
+title <- ggdraw() +
+  draw_label("Точечные диаграммы Кливленда", fontface = "bold", size = 14)+
+  theme(plot.margin = margin(0, 0, 0, 10))
+plot_row <- plot_grid(p1,p2,p3,p4,ncol = 2)
+plot_grid(title, plot_row,ncol =  1, rel_heights = c(0.1,1))
+plot_grid(p5,p6,p7,p8, ncol = 2)
+plot_grid(p9,p10,p11,p12, ncol = 2)
+plot_grid(p13,p14, NULL, NULL, ncol = 2)
+
+```
+
+### График корреляций для количественных переменных
+```{r}
+ggpairs(Boston[,c(-4,-9)])
+```
+
+Видим, что между переменными medv и lstat существует  нелинейная взаимосвязь, поэтому можно попробовать линеаризовать данную связь с помощью лог-трансформации переменной lstat. Визуализируем результат траснформации с помощью точечного графика.
+```{r message=FALSE, warning=FALSE}
+Boston$lstat_log <- log(Boston$lstat)
+
+pl_lstat <- ggplot(Boston, aes(x = lstat, medv)) + 
+  geom_point() + 
+  geom_smooth() +
+  labs(title = "Было") + 
+  theme(plot.title = element_text(face = "bold"))
+pl_lstat_log <- ggplot(Boston, aes(x = lstat_log, medv)) + 
+  geom_point() + 
+  geom_smooth() +
+  labs(title = "Стало") +
+  theme(plot.title = element_text(face = "bold"))
+plot_grid(pl_lstat, pl_lstat_log)
+```
+
+Лог-трансформация помогла, связь стала линейной. Далее для построения модели будем использовать лог-трансформированный предиктор lstat.
+
+# Построение полной модели.
+Построим модель со всеми переменными, кроме chas, чтобы не усложнять модель бинарным фактором.
+```{r}
+mod <- lm(medv ~ scale(lstat_log) + scale(black) + scale(ptratio) + scale(tax) + rad + scale(dis) + scale(age) + scale(rm) + scale(nox) + scale(indus) + scale(zn) + scale(crim), data = Boston)
+```
+
+## Диагностика модели
+```{r}
+# Данные для диагностики
+mod_diag <- fortify(mod)
+```
+
+### График расстояний Кука
+Проверка наличия влиятельных наблюдений:
+```{r}
+ggplot(mod_diag, aes(x = 1:nrow(mod_diag), y = .cooksd)) + 
+  geom_bar(stat = "identity") +
+  labs(title = "График расстояний Кука") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+```
+
+Влиятельных наблюдений нет, так как все значений меньше единицы.
+
+### График  остатков от предсказанных значений
+```{r message=FALSE, warning=FALSE}
+ggplot(mod_diag, aes(x = .fitted, y = .stdresid)) +
+  geom_point() +
+  geom_smooth() +
+  geom_hline(yintercept = 0) +
+  geom_hline(yintercept = 3, linetype="dashed", color = "red") +
+  geom_hline(yintercept = -3, linetype="dashed", color = "red") +
+  labs(title = "График остатков от предсказанных значений") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+```
+
+Из данного графика можно сделать вывод о нелинейности связи и гетерогенности дисперсий. Также часть наблюдений выходит за границу трех стандартных отклонений, что также не очень хорошо для модели.
+
+### Проверка условия независимости.
+Построим графики остатков от предикторов в модели и не в модели.
+В модель не вошел предиктор chas, поэтому добавим его к диагностической матрице.
+```{r message=FALSE, warning=FALSE, eval=FALSE}
+mod_diag$chas <- Boston$chas
+
+gg_model <- ggplot(mod_diag, aes(y = .stdresid))
+p1 <- gg_model + aes(x = `scale(zn)`)  + geom_point() + geom_smooth()
+p2 <- gg_model + aes(x = `scale(crim)`)  + geom_point() + geom_smooth()
+p3 <- gg_model + aes(x = chas) + geom_boxplot()
+p4 <- gg_model + aes(x = `scale(nox)`) + geom_point() + geom_smooth()
+p5 <- gg_model + aes(x = `scale(rm)`) + geom_point() + geom_smooth() #Виден паттерн
+p6 <- gg_model + aes(x = `scale(age)`) + geom_point() + geom_smooth()
+p7 <- gg_model + aes(x = `scale(dis)`) + geom_point() + geom_smooth()
+p8 <- gg_model + aes(x = rad) + geom_boxplot()
+p9 <- gg_model + aes(x = `scale(tax)`) + geom_point() + geom_smooth()
+p10 <- gg_model + aes(x = `scale(ptratio)`) + geom_point() + geom_smooth()
+p11 <- gg_model + aes(x = `scale(black)`) + geom_point() + geom_smooth()
+p12 <- gg_model + aes(x = `scale(lstat_log)`) + geom_point() + geom_smooth()
+p13 <- gg_model + aes(x = `scale(indus)`) + geom_point() + geom_smooth()
+
+title <- ggdraw() +
+  draw_label("График остатков от предиктов в модели и не в модели", fontface = "bold", size = 14)+
+  theme(plot.margin = margin(0, 0, 0, 10))
+plot_row <- plot_grid(p1,p2,p3,p4,p5,p6, ncol = 2)
+plot_grid(title, plot_row, ncol =  1, rel_heights = c(0.1,1))
+plot_grid(p7,p8,p9,p10,p11,p12,p13,ncol = 2)
+```
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+mod_diag$chas <- Boston$chas
+
+gg_model <- ggplot(mod_diag, aes(y = .stdresid))
+p1 <- gg_model + aes(x = `scale(zn)`)  + geom_point() + geom_smooth()
+p2 <- gg_model + aes(x = `scale(crim)`)  + geom_point() + geom_smooth()
+p3 <- gg_model + aes(x = chas) + geom_boxplot()
+p4 <- gg_model + aes(x = `scale(nox)`) + geom_point() + geom_smooth()
+p5 <- gg_model + aes(x = `scale(rm)`) + geom_point() + geom_smooth() #Виден паттерн
+p6 <- gg_model + aes(x = `scale(age)`) + geom_point() + geom_smooth()
+p7 <- gg_model + aes(x = `scale(dis)`) + geom_point() + geom_smooth()
+p8 <- gg_model + aes(x = rad) + geom_boxplot()
+p9 <- gg_model + aes(x = `scale(tax)`) + geom_point() + geom_smooth()
+p10 <- gg_model + aes(x = `scale(ptratio)`) + geom_point() + geom_smooth()
+p11 <- gg_model + aes(x = `scale(black)`) + geom_point() + geom_smooth()
+p12 <- gg_model + aes(x = `scale(lstat_log)`) + geom_point() + geom_smooth()
+p13 <- gg_model + aes(x = `scale(indus)`) + geom_point() + geom_smooth()
+
+title <- ggdraw() +
+  draw_label("График остатков от предиктов в модели и не в модели", fontface = "bold", size = 14)+
+  theme(plot.margin = margin(0, 0, 0, 10))
+plot_row <- plot_grid(p1,p2,p3,p4,p5,p6, ncol = 2)
+plot_grid(title, plot_row, ncol =  1, rel_heights = c(0.1,1))
+plot_grid(p7,p8,p9,p10,p11,p12,p13,ncol = 2)
+```
+
+Из графиков видно, что независимость нарушается для предиктора rm. Остальные предикторы можно считать независимыми. Также в неучтенном предикторе chas не наблюдается различий в распределении остатков в двух градациях фактора.
+
+### Проверка на нормальность распределения остатков переменной-отклика.
+Построим QQ-plot для проверки на нормальность.
+```{r}
+ggplot(mod, mapping = aes(sample = medv)) +
+  stat_qq_band() +
+  stat_qq_line() +
+  stat_qq_point() +
+  labs(x = "Theoretical Quantiles", y = "Sample Quantiles", title = "QQ-plot для остатков\n переменной отклика medv") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+```
+
+Распределение ненормальное. Попробуем построить QQ-plot для переменной-отклика в зависимости от градации фактора rad.
+```{r}
+ggplot(mod, mapping = aes(sample = medv)) +
+  stat_qq_band() +
+  stat_qq_line() +
+  stat_qq_point() +
+  labs(x = "Theoretical Quantiles", y = "Sample Quantiles", title = "QQ-plot для остатков переменной отклика medv\n в зависисмости от градации фактора rad") +
+  facet_wrap(~rad) +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+```
+
+В отношении каждой градации можно сказать, что распределение зависимой переменной medv в целом нормальное.
+
+## График предсказаний
+Построим график предсказаний от самого большого по модулю коэффициента.
+```{r}
+coef(mod)
+```
+
+Самым большим по модулю коэффициентом является rad, однако строить предсказания от дискретного предиктора не очень удобно, поэтому возьмем следующий коэффициент по величине предиктор  log_lstat - и сгруппируем по фактору rad.
+
+Для начала построим датасет для предсказаний. Так как у нас множественная линейная модель, добавим в датасет средние значения всех остальных предикторов, кроме log_lstat.  
+```{r}
+# Датасет для предсказаний
+MyData_lstat <- Boston %>% group_by(rad) %>% do(data.frame(lstat_log = seq(min(.$lstat_log), max(.$lstat_log), length.out = 1000)))
+MyData_lstat$crim <- mean(Boston$crim)
+MyData_lstat$zn <- mean(Boston$zn)
+MyData_lstat$nox <- mean(Boston$nox)
+MyData_lstat$rm <- mean(Boston$rm) 
+MyData_lstat$age <- mean(Boston$age)
+MyData_lstat$dis <- mean(Boston$dis)
+MyData_lstat$tax <- mean(Boston$tax)
+MyData_lstat$ptratio <- mean(Boston$ptratio)
+MyData_lstat$black <- mean(Boston$black)
+MyData_lstat$indus <- mean(Boston$indus)
+MyData_lstat$lstat <- exp(MyData_lstat$lstat_log)
+
+# Предсказанные значения
+Predictions_lstat <- predict(mod, newdata = MyData_lstat, interval = "confidence")
+MyData_lstat <- data.frame(MyData_lstat, Predictions_lstat)
+```
+
+Построим график предсказаний.
+```{r}
+ggplot(MyData_lstat, aes(x = lstat, y = fit)) +
+  geom_ribbon(data = MyData_lstat, alpha = 0.2, aes(x = lstat, ymin = lwr, ymax = upr, fill = rad)) +
+  geom_line(aes(colour = rad),size =1) +
+  geom_point(data = Boston, aes(x = lstat, y = medv, color = rad), size = 0.5) +
+  labs(title = "График предсказаний", y = "Предсказанные значения") +
+  scale_colour_brewer(palette = "Set1") +
+  scale_fill_brewer(palette = "Set1") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+```
+
+## Выводы о полной модели.
+Диагностика модели выявила гетерогенность дисперсий и отсутсвие независимости наблюдений. Поэтому данную модель нельзя использовать для предсказаний значений цен на участок.
+
+Также не была произведена проверка на мультиколлинеарность.
+```{r}
+vif(mod)
+```
+
+Очевидно, что мультиколлинеарность присутствует (есть значения vif > 3). Это также является причиной того, что нельзя использовать данную модель.
+
+Можно посмотреть на summary модели:
+```{r}
+summary(mod)
+```
+
+# Оптимальная модель
+Используем исходную модель и попробуем ее упростить, используя информационный критерий Акаике.
+```{r}
+mod <- lm(medv ~ log(lstat) + black + ptratio + tax + rad + dis + age + rm + nox + indus + zn + crim, data = Boston)
+
+drop1(mod)
+
+# Можно удалить предиктор age
+mod2 <- update(mod, .~. -age)
+drop1(mod2)
+
+# Можно удалить предиктор indus
+mod3 <- update(mod2, .~. -indus)
+
+# Дальнейшее удаление предикторов приведет к ухудшению модели.
+drop1(mod3)
+```
+
+## Прверка на мультколлинерность
+Проверим модель на мультиколлинеарность с помощью коэффициента вздутия дисперсии vif. Пошагово удалим предикторы, у которых коэффициент больше 3. 
+```{r}
+vif(mod3)
+mod4 <- update(mod3, .~. -rad)
+vif(mod4)
+mod5 <- update(mod4, .~. -nox)
+
+```
+
+mod5 - финальная модель. Далее проведем ее диагностику.
+
+## Диагностика модели, подобранной с помощью lm.
+```{r}
+# Данные для диагностики
+mod_diag_opt <- fortify(mod5)
+```
+
+### График расстояний Кука
+Проверка наличия влиятельных наблюдений:
+```{r}
+ggplot(mod_diag_opt, aes(x = 1:nrow(mod_diag_opt), y = .cooksd)) + 
+  geom_bar(stat = "identity") +
+  labs(title = "График расстояний Кука") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+```
+
+Влиятельных наблюдений нет, так как все значений меньше единицы.
+
+### График  остатков от предсказанных значений
+```{r message=FALSE, warning=FALSE}
+ggplot(mod_diag_opt, aes(x = .fitted, y = .stdresid)) +
+  geom_point() +
+  geom_hline(yintercept = 0) +
+  geom_hline(yintercept = 3, linetype="dashed", color = "red") +
+  geom_hline(yintercept = -3, linetype="dashed", color = "red") +
+  geom_smooth() +
+  labs(title = "График остатков от предсказанных значений") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+```
+
+На данном графике видно, что имеется нелинейность связи, а также небольшая гетерогенность дисперсий.
+
+### Проверка условия независимости.
+Построим графики остатков от предикторов в модели.
+```{r message=FALSE, warning=FALSE, eval=FALSE}
+gg_model_opt <- ggplot(mod_diag_opt, aes(y = .stdresid))
+pf1 <- gg_model_opt + aes(x = zn)  + geom_point() + geom_smooth()
+pf2 <- gg_model_opt + aes(x = crim)  + geom_point() + geom_smooth()
+pf3 <- gg_model_opt + aes(x = rm) + geom_point() + geom_smooth()
+pf4 <- gg_model_opt + aes(x = tax) + geom_point() + geom_smooth()
+pf5 <- gg_model_opt + aes(x = ptratio) + geom_point() + geom_smooth()
+pf6 <- gg_model_opt + aes(x = black) + geom_point() + geom_smooth()
+pf7 <- gg_model_opt + aes(x = tax) + geom_point() + geom_smooth()
+pf8 <- gg_model_opt + aes(x = `log(lstat)`) + geom_point() + geom_smooth()
+
+title <- ggdraw() +
+  draw_label("График остатков от предиктов в модели", fontface = "bold", size = 14)+
+  theme(plot.margin = margin(0, 0, 0, 10))
+
+plot_row <- plot_grid(pf1,pf2,pf3,pf4, ncol = 2)
+plot_grid(title, plot_row, ncol =  1, rel_heights = c(0.1,1))
+plot_grid(pf5,pf6,pf7,pf8, ncol = 2)
+```
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+gg_model_opt <- ggplot(mod_diag_opt, aes(y = .stdresid))
+pf1 <- gg_model_opt + aes(x = zn)  + geom_point() + geom_smooth()
+pf2 <- gg_model_opt + aes(x = crim)  + geom_point() + geom_smooth()
+pf3 <- gg_model_opt + aes(x = rm) + geom_point() + geom_smooth()
+pf4 <- gg_model_opt + aes(x = tax) + geom_point() + geom_smooth()
+pf5 <- gg_model_opt + aes(x = ptratio) + geom_point() + geom_smooth()
+pf6 <- gg_model_opt + aes(x = black) + geom_point() + geom_smooth()
+pf7 <- gg_model_opt + aes(x = tax) + geom_point() + geom_smooth()
+pf8 <- gg_model_opt + aes(x = `log(lstat)`) + geom_point() + geom_smooth()
+
+title <- ggdraw() +
+  draw_label("График остатков от предиктов в модели", fontface = "bold", size = 14)+
+  theme(plot.margin = margin(0, 0, 0, 10))
+
+plot_row <- plot_grid(pf1,pf2,pf3,pf4, ncol = 2)
+plot_grid(title, plot_row, ncol =  1, rel_heights = c(0.1,1))
+plot_grid(pf5,pf6,pf7,pf8, ncol = 2)
+```
+
+Из графика можно заметить, что наибольшую нелинейность привносят предикторы rm и lstat. Попробуем построить модель с взаимодействием. 
+```{r}
+model_int <- lm(medv ~ black + ptratio + rm + 
+                zn + crim + rm*log(lstat) + tax + dis, data = Boston)
+```
+
+## Диагностика модели cо взаимодействием
+```{r message=FALSE, warning=FALSE}
+mod_diag_opt2 <- fortify(model_int)
+# Влиятельне наблюдения. График расстояния Кука.
+ggplot(mod_diag_opt2, aes(x = 1:nrow(mod_diag_opt2), y = .cooksd)) + 
+  geom_bar(stat = "identity") +
+  labs(title = "График расстояний Кука") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+
+# График  остатков от предсказанных значений
+ggplot(mod_diag_opt2, aes(x = .fitted, y = .stdresid)) +
+  geom_point() +
+  geom_hline(yintercept = 0) +
+  geom_hline(yintercept = 3, linetype="dashed", color = "red") +
+  geom_hline(yintercept = -3, linetype="dashed", color = "red") +
+  geom_smooth() +
+  labs(title = "График остатков от предсказанных значений") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+
+```
+
+Похоже, что добавление взаимодействий помогло исправить нелинейность и гетерогенность дисперсий, однако можно попробовать еще построить модель gls (generalized least squares), так как возможно, что модель станет лучше.
+```{r message=FALSE, warning=FALSE}
+mod_formula <- medv ~ black + ptratio + rm + 
+  zn + crim + rm*log(lstat) + tax + dis
+mod_gls <- gls(mod_formula, data = Boston)
+mod_gls2 <- gls(mod_formula, data = Boston, weights =varFixed(~rm))
+mod_gls3 <- gls(mod_formula, data = Boston, weights =varPower(form =~rm))
+mod_gls4 <- gls(mod_formula, data = Boston, weights =varExp(form =~rm))
+mod_gls5 <- gls(mod_formula, data = Boston, weights =varConstPower(form =~rm))
+
+AIC(mod_gls, mod_gls2, mod_gls3, mod_gls4, mod_gls5)
+```
+
+Наилучшей моделью, исходя и информационного критерия Акаике, является mod_gls5. Посмотрим, как теперь выглядит график остатков от предсказанных значений.
+```{r message=FALSE, warning=FALSE}
+qplot(x = fitted(mod_gls5), y = residuals(mod_gls5, type = "pearson")) +
+  geom_smooth() + geom_hline(yintercept = 0) + labs(title = "График  остатков от предсказанных значений", y = "Pearson residuals") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+```
+
+На самом деле различий практически нет, но критерий Акаике говорит о том, что все-таки модель mod_gls5 лучше.
+
+## График предсказаний.
+Построим график предсказаний от lstat.
+Создадим новый датафрейм для предсказаний.
+```{r}
+MyData_opt <- data.frame(lstat_log = seq(min(Boston$lstat_log), max(Boston$lstat_log), length.out = 100))
+MyData_opt$rm <- mean(Boston$rm)
+MyData_opt$black <- mean(Boston$black)
+MyData_opt$ptratio <- mean(Boston$ptratio)
+MyData_opt$crim <- mean(Boston$crim)
+MyData_opt$zn <- mean(Boston$zn)
+MyData_opt$tax <- mean(Boston$tax)
+MyData_opt$dis <- mean(Boston$dis)
+MyData_opt$lstat <- exp(MyData_opt$lstat_log)
+```
+
+Рассчитаем вручную предсказанные значения и границы доверительных интервалов.
+```{r}
+X <- model.matrix(~black + ptratio + rm + 
+                    zn + crim + rm*log(lstat) + tax + dis, MyData_opt)
+
+betas <- coef(mod_gls5)
+
+MyData_opt$fit<- X %*% betas
+MyData_opt$se <- sqrt(diag(X %*% vcov(mod_gls5) %*% t(X)))
+
+MyData_opt$lwr <- MyData_opt$fit - 1.96 * MyData_opt$se 
+MyData_opt$upr <- MyData_opt$fit + 1.96 * MyData_opt$se 
+
+```
+
+Визуализируем предсказанные значения от перменной lstat:
+```{r message=FALSE, warning=FALSE}
+ggplot(MyData_opt, aes(x = lstat, y = fit)) +
+  geom_ribbon(data = MyData_opt, alpha = 0.2, aes(x = lstat, ymin = lwr, ymax = upr)) +
+  geom_line(size =1) +
+  geom_point(size = 0.5) +
+  geom_point(data = Boston, aes(x = lstat, y = medv)) +
+  labs(title = "График предсказаний", y = "Предсказанные значения") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+
+```
+
+## Выводы по оптимальной модели
+```{r}
+summary(mod_gls5)
+```
+
+Из данной модели можно сделать следующие выводы: цена на дом повышается при увеличении среднего количества комнат на дом (rm), а также цена на дом повышается при увеличении процента низшего класса среди населения общественного положения (lstat).
+Таким образом, чтобы максимизировать цену на дом, необходимо, чтобы дом находился в районе, где проживает население высшего класса, и чтобы в доме были квартиры с большим количеством комнат.
+
+# Список литературы
+1. Otis W. Gilley, On the Harrison and Rubinfeld Data (1996), Journal of Environmental Economics and Management
