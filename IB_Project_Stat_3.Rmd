@@ -1,0 +1,281 @@
+---
+title: "Project 3. Mice Protein Expression Data Set."
+output:
+    html_document:
+      code_folding: show
+      theme: united
+      toc: true
+      toc_depth: 3
+      toc_float: true
+      number_section: true
+
+---
+
+```{css, echo=FALSE}
+.header-section-number::after {
+  content: ".";
+}
+```
+
+Packages used in work.
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+# Absent packages will be installed
+if (!require(ggplot2)) install.packages("ggplot2")
+if (!require(dplyr)) install.packages("dplyr")
+if (!require(readxl)) install.packages("readxl")
+if (!require(GGally)) install.packages("GGally")
+if (!require(ggpubr)) install.packages("ggpubr")
+if (!require(qqplotr)) install.packages("qqplotr")
+if (!require(reactable)) install.packages("reactable")
+if (!require(devtools)) install.packages("devtools")
+if (!require(tidyr)) install.packages("tidyr")
+if (!require(multcomp)) install.packages("multcomp")
+if (!require(ggbiplot)) install_github("vqv/ggbiplot")
+if (!require(plotly)) install.packages("plotly")
+if (!require(car)) install.packages("car")
+```
+
+
+```{r echo = T, warning=FALSE, message=FALSE, eval=TRUE}
+library(readxl)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+library(GGally)
+library(qqplotr)
+library(car)
+library(devtools)
+library(ggbiplot)
+library(reactable)
+library(multcomp)
+library(plotly)
+```
+
+```{r echo = FALSE, warning=FALSE, message=FALSE, eval=TRUE}
+theme_set(theme_bw())
+```
+
+# Data desctiption
+## Investigation of the dataframe
+
+Data was obtained from [UC Irvine Machine Learning Repository](https://archive.ics.uci.edu/ml/datasets/Mice+Protein+Expression#)
+```{r}
+mice <- read_xls("/home/katerina/R/Project_3IB_Mice/Data_Cortex_Nuclear.xls") # write the pathway to file 
+reactable(mice)
+
+str(mice)
+```
+
+Transform variables `Genotype`, `Treatment`, `Behavior`, `class` into factors.
+```{r}
+mice$Genotype <- as.factor(mice$Genotype)
+mice$Treatment <- as.factor(mice$Treatment)
+mice$Behavior <- as.factor(mice$Behavior)
+mice$class <- as.factor(mice$class)
+```
+
+## Number of mice
+```{r}
+mice$Mouse_Sample <- as.factor(gsub("_[^_]*", replacement = "", mice$MouseID))
+length(unique(mice$Mouse_Sample))
+table(mice$Mouse_Sample)
+```
+
+Overall, there were 72 mice, each mouse was analyzed 15 times.
+
+## Mice classes 
+```{r}
+levels(mice$class)
+```
+
+There were 8 classes which group the data.
+
+## Are these classes balanced?
+```{r}
+mice_balance<- mice[!duplicated(mice$Mouse_Sample),]
+table(mice_balance$class)
+```
+
+There are no big difference between numbers of mice in each class, so the classes are more or less balanced.
+
+## Number of full observations
+```{r}
+sum(!is.na(mice))
+```
+
+I will create the dataframe without NA values. It will be necessary later.
+```{r}
+mice_wo_NA <- mice %>% drop_na()
+```
+
+# Comparison of `BDNF` protein production between classes
+In order to compare level of `BDNF_N` protein production One-way ANOVA was used. 
+
+```{r warning=FALSE, message=FALSE}
+mice_wo_NA_BDNF <- mice %>% drop_na(BDNF_N)
+
+mice_BDNF <- as.data.frame(mice_wo_NA_BDNF %>% group_by(class, Mouse_Sample) %>% dplyr::summarise(sample_mean_BDNF = mean(BDNF_N)))
+
+mod_anova <- lm(sample_mean_BDNF ~ class, mice_BDNF)
+
+mice_anova <- Anova(mod_anova)
+
+mice_anova
+```
+
+ANOVA results shows that the differences between some of the means are statistically significant (p-value = 0.044). 
+But means of what groups differ? Let's use Post-hoc test to reveal that.
+```{r}
+summary(glht(mod_anova, linfct = mcp(class = "Tukey")))
+```
+
+It could be seen that there are statistically significant difference between the means of **c-SC-m** and **c-CS-s** classes.
+
+Bar plot for data visualization is presented below:
+```{r}
+# Data for plot
+MyData <- (class = factor(levels(mice_BDNF$class),levels =levels(mice_BDNF$class)))
+MyData <- data.frame(MyData, predict(mod_anova,newdata = MyData, interval = "confidence"))
+
+# Plot
+ggplot(data =MyData,aes(x = MyData, y =fit)) + 
+  geom_bar(stat = "identity", aes(fill = MyData), width = 0.5) +
+  geom_errorbar(aes(ymin = lwr, ymax = upr), width = 0.1) + 
+  labs(title = "Comparison of BDNF_N protein production \nin different classes", x = "Class", y = "BDNF_N protein production") + 
+  scale_fill_brewer(type = 'div', palette = 'Spectral', direction = 1) + 
+  scale_x_discrete(labels =c("c-CS-m","c-CS-s", "c-SC-m", "c-SC-s", "t-CS-m", "t-CS-s", "t-SC-m", "t-SC-s")) + 
+  theme(legend.position = "none", plot.title = element_text(face = "bold", hjust = 0.5))
+```
+
+# Linear model
+## Linear model with initial data
+The problem of this dataset is that there are technical repeats. It means that the observations become dependent. 
+We can try to build simple linear model, but, honestly, it is not a good idea, because the results might be misinterpreted.
+```{r}
+mice_lm_data <- mice[,-c(1,79:81,83)] %>% drop_na()
+mod_mice <- lm(ERBB4_N ~ ., data = mice_lm_data)
+```
+### Linear model diagnostics
+```{r}
+# Data for model diagnostics
+mod_diag <- fortify(mod_mice)
+
+# Plot of Cook's distance
+ggplot(mod_diag, aes(x = 1:nrow(mod_diag), y = .cooksd)) + 
+  geom_bar(stat = "identity") +
+  labs(title = "Plot of Cook's distance", x = "Number of observation") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+
+# Plot of residuals vs predicted values
+ggplot(mod_diag, aes(x = .fitted, y = .stdresid)) +
+  geom_point() +
+  geom_smooth() +
+  geom_hline(yintercept = 0) +
+  geom_hline(yintercept = 3, linetype="dashed", color = "red") +
+  geom_hline(yintercept = -3, linetype="dashed", color = "red") +
+  labs(title = "Plot of residuals vs predicted values") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+
+
+ggplot(mod_mice, mapping = aes(sample = ERBB4_N)) +
+  stat_qq_band() +
+  stat_qq_line() +
+  stat_qq_point() +
+  labs(x = "Theoretical Quantiles", y = "Sample Quantiles", title = "QQ-plot of residuals\n of ERBB4_N variable") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+
+ggplot(mod_mice, mapping = aes(sample = ERBB4_N)) +
+  stat_qq_band() +
+  stat_qq_line() +
+  stat_qq_point() +
+  labs(x = "Theoretical Quantiles", y = "Sample Quantiles", title = "QQ-plot of residuals\n of ERBB4_N variable for mice classes") +
+  facet_wrap(~class) +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+```
+
+In spite of the fact that technically this model is valid, it can not be used because of the abovementioned reason.
+
+## Linear model with data grouped by mouse sample
+Also we can try to group data by mice and find the mean of the values of the one mouse. 
+```{r}
+mice_grouped <- mice[,-c(1,79:82)] %>% group_by(Mouse_Sample) %>% summarise_all(mean)
+
+mice_classes <- mice[!duplicated(mice$Mouse_Sample),]
+sort(mice_classes$Mouse_Sample) == mice_grouped$Mouse_Sample
+
+mice_grouped <- cbind(mice_grouped, sort(mice_classes$class))
+str(mice_grouped)
+
+mice_grouped <- mice_grouped[,-c(1,78)] %>% drop_na()
+mod_grouped <- lm(ERBB4_N ~ ., data = mice_grouped)
+summary(mod_grouped)
+```
+
+As we can see the model contain many *NA* values. It happened because the variable have strong correlation. Thus, linear model cannot be built.
+
+# PCA
+## Ordination
+Dataset without NA values was used in order to build the ordination 
+```{r}
+mice_pca <- prcomp(mice_wo_NA[,-c(1,79:83)], center = TRUE, scale. = TRUE)
+summary(mice_pca)
+```
+
+# Plot for proportion of variance
+```{r}
+pca_variance <- as.data.frame(summary(mice_pca)$importance[2,])
+
+colnames(pca_variance) <- "Proportion_of_variance"
+ggplot(pca_variance, aes(x = c(1:nrow(pca_variance)), y = Proportion_of_variance)) +
+  geom_bar(stat = "identity", fill = "tan2") + 
+  labs(title = "Bar plot for proportion of variance", x = "PC", y = "Proportion of variance") + 
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+
+```
+
+Also Scree Plot may show the number of PC, which explain the most part of variance.
+```{r}
+pca_variance10 <- as.data.frame(summary(mice_pca)$importance[2,1:10])
+colnames(pca_variance10) <- "Proportion_of_variance"
+pca_variance10$Proportion_of_variance <- round(pca_variance10$Proportion_of_variance, 3)
+
+ggplot(pca_variance10, aes(x = c(1:10), y = Proportion_of_variance)) +
+  geom_bar(stat = "identity", fill = "tan2") + 
+  scale_x_discrete(limits = c("PC1","PC2", "PC3", "PC4", "PC5", "PC6", "PC7", "PC8", "PC9", "PC10")) +
+  geom_text(aes(label = Proportion_of_variance),vjust=-0.5, hjust = 0.1, size=3) +
+  scale_y_continuous(limits = c(0,0.4)) + 
+  geom_line() + 
+  geom_point() +
+  labs(title = "Scree Plot", x = NULL, y = "Proportion of variance") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+```
+
+This plot demonstrates that 4 PC explain the greatest part of variance.
+
+## Biplot
+
+```{r}
+ggbiplot(mice_pca, ellipse=TRUE, groups=mice_wo_NA$class, labels = NULL, var.axes = FALSE, alpha = 0.7) +
+  scale_color_brewer(type = 'div', palette = 'Spectral', direction = 1)
+```
+It could be seen that **c-CS-m**, **c-CS-s**, **t-CS-m**, **t-CS-s** classes form an isolated cluster in the bottom part of the plot. It is known that mice from these classes were stimulated with saline (for -s) and memantine (for -m).
+
+## 3D plot
+
+```{r}
+plot_data <- as.data.frame(mice_pca$x)
+plt <- plot_ly(plot_data, x = ~PC1, y = ~PC2, z = ~PC3, size = 0.5)
+plt <- plt %>% add_markers(color=~mice_wo_NA$class, colors = "Spectral")
+plt <- plt %>% layout(scene = list(xaxis = list(title = 'PC1'),
+                                   yaxis = list(title = 'PC2'),
+                                   zaxis = list(title = 'PC3')))
+plt
+```
+
+
