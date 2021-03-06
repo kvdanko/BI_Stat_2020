@@ -1,0 +1,241 @@
+---
+title: "Surveillance curves"
+output:
+    html_document:
+      code_folding: show
+      theme: united
+      toc: true
+      toc_depth: 3
+      toc_float: true
+      number_section: true
+
+---
+
+```{css, echo=FALSE}
+.header-section-number::after {
+  content: ".";
+}
+```
+
+Packages used in work.
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+# Absent packages will be installed
+if (!require(ggplot2)) install.packages("ggplot2")
+if (!require(surveillance)) install.packages("surveillance")
+if (!require(survival)) install.packages("survival")
+if (!require(dplyr)) install.packages("dplyr")
+if (!require(survminer)) install.packages("survminer")
+if (!require(ranger)) install.packages("ranger")
+if (!require(ggfortify)) install.packages("ggfortify")
+if (!require(coin)) install.packages("coin")
+```
+
+```{r echo = T, warning=FALSE, message=FALSE, eval=TRUE}
+library(surveillance)
+library(survival)
+library(ggplot2)
+library(dplyr)
+library(survminer)
+library(ranger)
+library(ggfortify)
+library(coin)
+```
+
+```{r echo = FALSE, warning=FALSE, message=FALSE, eval=TRUE}
+theme_set(theme_bw())
+```
+
+# Data desctiption
+## Investigation of the dataframe
+
+```{r}
+data("ovarian")
+str(ovarian)
+```
+
+The following variables are presented in this dataset:
+
+* futime:	survival or censoring time
+* fustat:	censoring status
+* age:	in years
+* resid.ds:	residual disease present (1=no,2=yes)
+* rx:	treatment group
+* ecog.ps:	ECOG performance status (1 is better, see reference)
+
+Transform variables `resid.ds`, `rx`, `ecog.ps` into factors.
+```{r}
+ovarian <- ovarian %>% mutate(resid.ds = as.factor(resid.ds),
+                   rx = as.factor(rx),
+                   ecog.ps = as.factor(ecog.ps))
+```
+
+Rename factor's level.
+```{r}
+levels(ovarian$resid.ds) <- c("No", "Yes")
+```
+
+# EDA
+## Number of censoring values
+```{r}
+ovarian %>% group_by(fustat) %>% dplyr::summarise(n = n())
+```
+
+There are more than a half censoring values which is not favorable for further analysis.
+
+## Number of observations of different treatment type
+```{r}
+ovarian %>% group_by(rx) %>% dplyr::summarise(n = n())
+```
+
+There are equal group number.
+
+## Age range
+```{r}
+ovarian %>% dplyr::summarise(min_age = round(min(ovarian$age), 2),
+                             max_age = round(max(ovarian$age), 2),
+                             mean_age = round(mean(ovarian$age), 2))
+```
+
+## Distribution of patient's ages and censoring status
+It could be seen that many patients, whose age was above 60, left the experiment.
+```{r}
+ggplot(ovarian, aes(x = factor(fustat), y = age, fill = factor(fustat)))+
+  geom_boxplot(width = 0.4) + 
+  geom_jitter(size = 0.8) +
+  labs(title = "Distribution of patient's ages and censoring status") +
+  scale_fill_brewer(palette = "Set2") +
+  guides(fill = guide_legend(title = "Censoring status")) +
+  theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+```
+
+## Distribution of patient's ages and treatment type
+```{r}
+ggplot(ovarian, aes(x = rx, y = age, fill = rx))+
+  geom_boxplot(width = 0.4) + 
+  geom_jitter(size = 0.8) +
+  labs(title = "Distribution of patient's ages and treatment type") +
+  scale_fill_brewer(palette = "Set2") + 
+  guides(fill = guide_legend(title = "Treatment")) + 
+  theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+```
+
+## Surveillance for patients of different ages and treatment
+```{r warning=FALSE, message=FALSE}
+ggplot(ovarian, aes(x = age, y = futime, color = rx, fill = rx))+
+  geom_point() +
+  geom_smooth(alpha = 0.2) +
+  labs(title = "Surveillance for patients of different ages depending on the treatment type") +
+  scale_color_brewer(palette = "Set2") + 
+  scale_fill_brewer(palette = "Set2") + 
+  guides(fill = guide_legend(title = "Treatment"), color = guide_legend(title = "Treatment")) +
+  theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+```
+
+## Presence of the residual disease
+The plot below demonstrates that there may be some relationship between age and the presence of the residual disease.
+```{r}
+ggplot(ovarian, aes(x = resid.ds, y = age, fill = resid.ds))+
+  geom_boxplot() +
+  scale_fill_brewer(palette = "Set2") +
+  labs(title = "Presence of the residual disease depending on patients' age") +
+  theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+```
+
+# Kaplan–Meier curves
+```{r}
+km <- with(ovarian, Surv(futime, fustat))
+km
+```
+
+```{r}
+km_fit_1 <- survfit(Surv(futime, fustat) ~ 1, data = ovarian)
+autoplot(km_fit_1)
+```
+
+Let's make additional variables for further plotting.
+```{r}
+ovarian <-ovarian %>% mutate(age_group = ifelse((age < mean(ovarian$age)), "Below_average", "Above_average"),
+                             age_group = factor(age_group))
+
+ovarian$age_treatment <- factor(apply(ovarian[, c(7,5)], 1, paste, collapse = "_"))
+
+ovarian$age_resid <- factor(apply(ovarian[, c(7,4)], 1, paste, collapse = "_"))
+
+ovarian$resid_rx <- factor(apply(ovarian[, c(4,5)], 1, paste, collapse = "_"))
+```
+
+```{r}
+# rx
+km_fit_rx <- survfit(Surv(futime, fustat) ~ rx, data = ovarian)
+autoplot(km_fit_rx) + 
+  scale_color_brewer(palette = "Set2") + 
+  scale_fill_brewer(palette = "Set2") + 
+  guides(fill = guide_legend(title = "Treatment type"), color = guide_legend(title = "Treatment type")) +
+  labs(title = "Surveillance curves for patients with different treatment type") +
+  theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+
+# age group
+km_fit_age <- survfit(Surv(futime, fustat) ~ age_group, data = ovarian)
+autoplot(km_fit_age) +
+  scale_color_brewer(palette = "Set2") + 
+  scale_fill_brewer(palette = "Set2") +
+  guides(fill = guide_legend(title = "Age group"), color = guide_legend(title = "Age group")) +
+  labs(title = "Surveillance curves for patients of different age groups") +
+  theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+
+# age & rx
+km_fit_age_rx <- survfit(Surv(futime, fustat) ~ age_treatment, data = ovarian)
+autoplot(km_fit_age_rx) +
+  scale_color_brewer(palette = "Dark2") + 
+  scale_fill_brewer(palette = "Dark2") +
+  guides(fill = guide_legend(title = "Age and \nTreatment type"), color = guide_legend(title = "Age and \nTreatment type")) +
+  labs(title = "Surveillance curves for patients of different \nage groups and treatment type") +
+  theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+
+# age & resid.ds
+km_fit_age_resid <- survfit(Surv(futime, fustat) ~ age_resid, data = ovarian)
+autoplot(km_fit_age_resid) +
+  scale_color_brewer(palette = "Dark2") + 
+  scale_fill_brewer(palette = "Dark2") +
+  guides(fill = guide_legend(title = "Age and \nResidual disease"), color = guide_legend(title = "Age and \nResidual disease")) + 
+  labs(title = "Surveillance curves for patients of different \nage groups and presence of residual disease") +
+  theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+
+# resid.ds & rx
+km_fit_rx_resid <- survfit(Surv(futime, fustat) ~ resid_rx, data = ovarian)
+autoplot(km_fit_rx_resid) +
+  scale_color_brewer(palette = "Dark2") + 
+  scale_fill_brewer(palette = "Dark2") +
+  guides(fill = guide_legend(title = "Residual disease and \nTreatment type"), color = guide_legend(title = "Residual disease and \nTreatment type")) +
+  labs(title = "Surveillance curves for patients with different \ntreatment type and presence of residual disease") +
+  theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+```
+
+# Log-rank tests
+Log-rank tests are used to compare the survival distributions of two samples.
+```{r}
+survdiff(Surv(futime, fustat) ~ rx, data = ovarian) # No statistical difference between survival curves
+
+survdiff(Surv(futime, fustat) ~ age_group, data = ovarian) # No statistical difference between survival curves
+
+survdiff(Surv(futime, fustat) ~ resid.ds, data = ovarian) # No statistical difference between survival curves
+
+survdiff(Surv(futime, fustat) ~ ecog.ps, data = ovarian) # No statistical difference between survival curves
+```
+
+# Cox model
+Cox model is used for investigating the association between the survival time of patients and one or more predictor variables (risks).
+```{r}
+cox <- coxph(Surv(futime, fustat) ~ rx + age_group + resid.ds + ecog.ps, data = ovarian)
+summary(cox)
+
+cox_fit <- survfit(cox)
+autoplot(cox_fit)
+```
+
+Here we can see that there is no factors affecting survival time.
