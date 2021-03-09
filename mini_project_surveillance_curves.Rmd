@@ -129,7 +129,7 @@ ggplot(ovarian, aes(x = rx, y = age, fill = rx))+
 ggplot(ovarian, aes(x = age, y = futime, color = rx, fill = rx))+
   geom_point() +
   geom_smooth(alpha = 0.2) +
-  labs(title = "Surveillance for patients of different ages depending on the treatment type") +
+  labs(title = "Surveillance for patients of different ages \ndepending on the treatment type") +
   scale_color_brewer(palette = "Set2") + 
   scale_fill_brewer(palette = "Set2") + 
   guides(fill = guide_legend(title = "Treatment"), color = guide_legend(title = "Treatment")) +
