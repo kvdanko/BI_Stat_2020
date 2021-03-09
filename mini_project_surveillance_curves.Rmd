@@ -65,7 +65,16 @@ The following variables are presented in this dataset:
 * age:	in years
 * resid.ds:	residual disease present (1=no,2=yes)
 * rx:	treatment group
-* ecog.ps:	ECOG performance status (1 is better, see reference)
+* ecog.ps:	ECOG performance status **
+
+** *ECOG performance status*
+
+**0** 	Fully active, able to carry on all pre-disease performance without restriction   
+**1** 	Restricted in physically strenuous activity but ambulatory and able to carry out work of  a light or sedentary nature, e.g., light house work, office work    
+**2** 	Ambulatory and capable of all selfcare but unable to carry out any work activities; up and about more than 50% of waking hours     
+**3** 	Capable of only limited selfcare; confined to bed or chair more than 50% of waking hours   
+**4** 	Completely disabled; cannot carry on any selfcare; totally confined to bed or chair  
+**5** 	Dead
 
 Transform variables `resid.ds`, `rx`, `ecog.ps` into factors.
 ```{r}
@@ -92,6 +101,11 @@ There are more than a half censoring values which is not favorable for further a
 ovarian %>% group_by(rx) %>% dplyr::summarise(n = n())
 ```
 
+## Number of patients with different ECOG status
+```{r}
+ovarian %>% group_by(ecog.ps) %>% dplyr::summarise(n = n())
+```
+
 There are equal group number.
 
 ## Age range
@@ -114,6 +128,7 @@ ggplot(ovarian, aes(x = factor(fustat), y = age, fill = factor(fustat)))+
 ```
 
 ## Distribution of patient's ages and treatment type
+The age range in the second treatment type group was less than in the first treatment type group.
 ```{r}
 ggplot(ovarian, aes(x = rx, y = age, fill = rx))+
   geom_boxplot(width = 0.4) + 
@@ -136,13 +151,25 @@ ggplot(ovarian, aes(x = age, y = futime, color = rx, fill = rx))+
   theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
 ```
 
-## Presence of the residual disease
-The plot below demonstrates that there may be some relationship between age and the presence of the residual disease.
+## Presence of the residual disease depending on patients' age
+The plot below demonstrates that there may be some relationship between patients' age and the presence of the residual disease.
 ```{r}
 ggplot(ovarian, aes(x = resid.ds, y = age, fill = resid.ds))+
-  geom_boxplot() +
+  geom_boxplot(width = 0.4) + 
+  geom_jitter(size = 0.8) +
   scale_fill_brewer(palette = "Set2") +
   labs(title = "Presence of the residual disease depending on patients' age") +
+  theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+```
+
+## ECOG status depending on patients' age and type of treatment
+
+```{r}
+ggplot(ovarian, aes(x = ecog.ps, y = age, fill = ecog.ps))+
+  geom_boxplot(width = 0.4) + 
+  geom_jitter(size = 0.8) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(title = "ECOG status depending on patients' age") +
   theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
 ```
 
@@ -151,12 +178,14 @@ ggplot(ovarian, aes(x = resid.ds, y = age, fill = resid.ds))+
 km <- with(ovarian, Surv(futime, fustat))
 km
 ```
-
+## General curve
 ```{r}
 km_fit_1 <- survfit(Surv(futime, fustat) ~ 1, data = ovarian)
-autoplot(km_fit_1)
+autoplot(km_fit_1) +
+  labs(title = "General surveillance curve") +
+  theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
 ```
-
+## Additional variables
 Let's make additional variables for further plotting.
 ```{r}
 ovarian <-ovarian %>% mutate(age_group = ifelse((age < mean(ovarian$age)), "Below_average", "Above_average"),
@@ -167,8 +196,15 @@ ovarian$age_treatment <- factor(apply(ovarian[, c(7,5)], 1, paste, collapse = "_
 ovarian$age_resid <- factor(apply(ovarian[, c(7,4)], 1, paste, collapse = "_"))
 
 ovarian$resid_rx <- factor(apply(ovarian[, c(4,5)], 1, paste, collapse = "_"))
-```
 
+ovarian$ecog_treatment <- factor(apply(ovarian[, c(6,5)], 1, paste, collapse = "_"))
+
+ovarian$ecog_age <- factor(apply(ovarian[, c(7,6)], 1, paste, collapse = "_"))
+
+ovarian$ecog_resid <- factor(apply(ovarian[, c(6,4)], 1, paste, collapse = "_"))
+```
+## Treatment type
+On the plot below we can notice that the surveillance of patients from the second treatment type group has a tendency to be higher comparing to the first treatment type group.
 ```{r}
 # rx
 km_fit_rx <- survfit(Surv(futime, fustat) ~ rx, data = ovarian)
@@ -176,9 +212,26 @@ autoplot(km_fit_rx) +
   scale_color_brewer(palette = "Set2") + 
   scale_fill_brewer(palette = "Set2") + 
   guides(fill = guide_legend(title = "Treatment type"), color = guide_legend(title = "Treatment type")) +
-  labs(title = "Surveillance curves for patients with different treatment type") +
+  labs(title = "Surveillance curves for patients from \ndifferent treatment type groups") +
   theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+```
 
+## ECOG status
+Here we can see the declining tendency for patients with *2* ECOG status to survive. 
+```{r}
+# ecog.ps
+km_fit_rx <- survfit(Surv(futime, fustat) ~ ecog.ps, data = ovarian)
+autoplot(km_fit_rx) + 
+  scale_color_brewer(palette = "Set2") + 
+  scale_fill_brewer(palette = "Set2") + 
+  guides(fill = guide_legend(title = "ECOG status"), color = guide_legend(title = "ECOG status")) +
+  labs(title = "Surveillance curves for patients with different ECOG status") +
+  theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+```
+
+## Age group
+The plot below shows that there is a tendency of survival rates to be greater for patients whose age is below the average.
+```{r}
 # age group
 km_fit_age <- survfit(Surv(futime, fustat) ~ age_group, data = ovarian)
 autoplot(km_fit_age) +
@@ -187,7 +240,11 @@ autoplot(km_fit_age) +
   guides(fill = guide_legend(title = "Age group"), color = guide_legend(title = "Age group")) +
   labs(title = "Surveillance curves for patients of different age groups") +
   theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+```
 
+## Age and Treatment type groups
+The plot presented below shows that the highest survival rate seems to be among patients whose age is below average and who receive second type of treatment, while the lowest - among patients whose age is above average and who receive first type of treatment.
+```{r}
 # age & rx
 km_fit_age_rx <- survfit(Surv(futime, fustat) ~ age_treatment, data = ovarian)
 autoplot(km_fit_age_rx) +
@@ -196,7 +253,11 @@ autoplot(km_fit_age_rx) +
   guides(fill = guide_legend(title = "Age and \nTreatment type"), color = guide_legend(title = "Age and \nTreatment type")) +
   labs(title = "Surveillance curves for patients of different \nage groups and treatment type") +
   theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+```
 
+## Age group and Residual disease
+The following plot demonstrates that the highest survival rate seems to be among patients whose age is below average and who do not have residual disease. In contrast, there is a declining tendency for patients whose age is above average and who have residual disease to survive.
+```{r}
 # age & resid.ds
 km_fit_age_resid <- survfit(Surv(futime, fustat) ~ age_resid, data = ovarian)
 autoplot(km_fit_age_resid) +
@@ -205,7 +266,11 @@ autoplot(km_fit_age_resid) +
   guides(fill = guide_legend(title = "Age and \nResidual disease"), color = guide_legend(title = "Age and \nResidual disease")) + 
   labs(title = "Surveillance curves for patients of different \nage groups and presence of residual disease") +
   theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+```
 
+## Residual disease and Treatment type
+Next plot shows a trend for patients who receive second type of treatment and have residual disease to die.
+```{r}
 # resid.ds & rx
 km_fit_rx_resid <- survfit(Surv(futime, fustat) ~ resid_rx, data = ovarian)
 autoplot(km_fit_rx_resid) +
@@ -216,8 +281,49 @@ autoplot(km_fit_rx_resid) +
   theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
 ```
 
+## ECOG status and Age group
+The plot presented below shows that the lowest survival rate seems to be among patients whose age is below average and whose ECOG status is "2".
+```{r}
+# ecog.ps & age
+km_fit_ecog_age <- survfit(Surv(futime, fustat) ~ ecog_age, data = ovarian)
+autoplot(km_fit_ecog_age) +
+  scale_color_brewer(palette = "Dark2") + 
+  scale_fill_brewer(palette = "Dark2") +
+  guides(fill = guide_legend(title = "Age and \nECOG status"), color = guide_legend(title = "Age and \nECOG status")) +
+  labs(title = "Surveillance curves for patients of different \nage groups and ECOG status") +
+  theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+```
+
+## ECOG status and Treatment type
+Here we can see a good trend to survive for patients who receive second type of treatment and have ECOG status "1".
+```{r}
+# ecog.ps & rx
+km_fit_ecog_rx <- survfit(Surv(futime, fustat) ~ ecog_treatment, data = ovarian)
+autoplot(km_fit_ecog_rx) +
+  scale_color_brewer(palette = "Dark2") + 
+  scale_fill_brewer(palette = "Dark2") +
+  guides(fill = guide_legend(title = "ECOG_Treatment"), color = guide_legend(title = "ECOG_Treatment")) +
+  labs(title = "Surveillance curves for patients with \ndifferent ECOG status and treatment type") +
+  theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+```
+
+## ECOG status and Residual disease
+The greatest survival trend is observed for patients without residual disease and ECOG status "1".
+```{r}
+# ecog.ps & resid.ds
+km_fit_ecog_resid <- survfit(Surv(futime, fustat) ~ ecog_resid, data = ovarian)
+autoplot(km_fit_ecog_resid) +
+  scale_color_brewer(palette = "Dark2") + 
+  scale_fill_brewer(palette = "Dark2") +
+  guides(fill = guide_legend(title = "ECOG and \nResidual disease"), color = guide_legend(title = "ECOG and \nResidual disease")) +
+  labs(title = "Surveillance curves for patients with different \nECOG status and presence of residual disease") +
+  theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+```
+
 # Log-rank tests
-Log-rank tests are used to compare the survival distributions of two samples.
+Log-rank tests are used to compare the survival distributions.   
+`surfdiff` function was used when there were two levels of factor, while `pairwise_survdiff` function was used when there were more than two levels of factor, because P value adjustment methoda are provided by this function.  
+No statistical difference between survival curves was observed.
 ```{r}
 survdiff(Surv(futime, fustat) ~ rx, data = ovarian) # No statistical difference between survival curves
 
@@ -226,7 +332,20 @@ survdiff(Surv(futime, fustat) ~ age_group, data = ovarian) # No statistical diff
 survdiff(Surv(futime, fustat) ~ resid.ds, data = ovarian) # No statistical difference between survival curves
 
 survdiff(Surv(futime, fustat) ~ ecog.ps, data = ovarian) # No statistical difference between survival curves
+
+pairwise_survdiff(Surv(futime, fustat) ~ age_treatment, data = ovarian) # No statistical difference between survival curves
+
+pairwise_survdiff(Surv(futime, fustat) ~ age_resid, data = ovarian) # No statistical difference between survival curves
+
+pairwise_survdiff(Surv(futime, fustat) ~ resid_rx, data = ovarian) # No statistical difference between survival curves
+
+pairwise_survdiff(Surv(futime, fustat) ~ ecog_treatment, data = ovarian) # No statistical difference between survival curves
+
+pairwise_survdiff(Surv(futime, fustat) ~ ecog_age, data = ovarian) # No statistical difference between survival curves
+
+pairwise_survdiff(Surv(futime, fustat) ~ ecog_resid, data = ovarian) # No statistical difference between survival curves
 ```
+
 
 # Cox model
 Cox model is used for investigating the association between the survival time of patients and one or more predictor variables (risks).
@@ -235,7 +354,14 @@ cox <- coxph(Surv(futime, fustat) ~ rx + age_group + resid.ds + ecog.ps, data = 
 summary(cox)
 
 cox_fit <- survfit(cox)
-autoplot(cox_fit)
+autoplot(cox_fit) + 
+  labs(title = "Cox model curve") +
+  theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+  
 ```
 
-Here we can see that there is no factors affecting survival time.
+```{r}
+ggforest(cox, data = ovarian)
+```
+
+Here we can see that there is no factors (among `age_group`, `rx`, `ecog.ps`, `resid.ds`)  affecting survival time.
