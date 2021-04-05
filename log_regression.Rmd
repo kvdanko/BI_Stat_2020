@@ -1,0 +1,325 @@
+---
+title: "Логистическая регрессия"
+output:
+    html_document:
+      code_folding: show
+      theme: united
+      toc: true
+      toc_depth: 3
+      toc_float: true
+      number_section: true
+
+---
+
+```{css, echo=FALSE}
+.header-section-number::after {
+  content: ".";
+}
+```
+
+Список пакетов, используемых в работе:
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+#Для правильной компиляции необходимо скачать отсутсвующие пакеты
+if (!require(ggplot2)) install.packages("ggplot2")
+if (!require(dplyr)) install.packages("dplyr")
+if (!require(cowplot)) install.packages("cowplot")
+if (!require(car)) install.packages("car")
+```
+
+
+```{r echo = T, warning=FALSE, message=FALSE, eval=TRUE}
+library(ggplot2)
+library(car)
+library(dplyr)
+library(cowplot)
+```
+
+```{r echo = FALSE, warning=FALSE, message=FALSE, eval=TRUE}
+theme_set(theme_bw())
+```
+
+#Знакомимся с данными
+```{r}
+data <- read.csv("https://stats.idre.ucla.edu/stat/data/binary.csv")
+str(data)
+```
+
+Переменные в датасете: 
+
+* admit - поступил - 1, не поступил - 0
+* GPA - средний балл
+* GRE - результат тестирования GRE
+* rank - рейтинг универсистета: 1 - лучший, 4 - худший
+
+Конвертируем переменные `admit` и `rank` в факторные 
+```{r}
+data$admit <- as.factor(data$admit)
+levels(data$admit) <- c("not admit", "admit")
+
+data$rank <- as.factor(data$rank)
+```
+
+# EDA
+```{r}
+sum(is.na(data))
+```
+
+## Общая статистика
+```{r}
+summary(data)
+```
+
+## Сбалансированы ли классы?
+```{r}
+table(data$admit, data$rank)
+```
+Классы не сбалансированы, что может быть не очень хорошо для регрессионной модели.
+
+## Есть ли выбросы?
+Построим точечные диаграммы Кливленда для поиска отскакивающих значений.
+```{r}
+p1 <- ggplot(data, aes(x = 1:nrow(data), y = gre)) + 
+  geom_point()
+p2 <- ggplot(data, aes(x = 1:nrow(data), y = gpa)) + 
+  geom_point()
+title <- ggdraw() +
+  draw_label("Точечные диаграммы Кливленда", fontface = "bold", size = 14) +
+  theme(plot.margin = margin(0, 0, 0, 10))
+plot_row <- plot_grid(p1, p2, ncol = 2)
+plot_grid(title, plot_row, ncol =  1, rel_heights = c(0.1,1))
+```
+
+Выбросов в данных нет.
+
+## Непрерывну переменные GPA и GRE
+Посмотрим, как распределены значения переменных `gpa` и `gre` между переменными `rank` и `admit`.
+```{r}
+ggplot(data, aes(x = admit, y = gpa, fill = admit)) +
+  geom_boxplot() + 
+  scale_fill_brewer(palette = "Spectral", direction = -1) +
+  labs(title = "Boxplots for students GPA results\n and admission outcome in different unstitutions") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5)) +
+  facet_wrap(~rank)
+
+ggplot(data, aes(x = admit, y = gre, fill = admit)) +
+  geom_boxplot() +
+  scale_fill_brewer(palette = "Spectral", direction = -1) +
+  labs(title = "Boxplots for students GRE results\n and admission outcome in different unstitutions") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5)) +
+  facet_wrap(~rank)
+
+ggplot(data, aes(x = gre, color = rank, fill = rank)) + 
+  geom_density(alpha = 0.3) + 
+  scale_fill_brewer(palette = "Spectral", direction = -1) + 
+  scale_color_brewer(palette = "Spectral", direction = -1) + 
+  labs(title = "Распределение баллов по GRE у абитуриентов,\n поступающих в разные вузы") + 
+  theme(plot.title = element_text(face = "bold", hjust = 0.5)) +
+  facet_wrap(~rank)
+
+ggplot(data, aes(x = gpa, color = rank, fill = rank)) + 
+  geom_density(alpha = 0.3) + 
+  scale_fill_brewer(palette = "Spectral", direction = -1) + 
+  scale_color_brewer(palette = "Spectral", direction = -1) + 
+  labs(title = "Распределение баллов GPA у абитуриентов,\n поступающих в разные вузы") + 
+  theme(plot.title = element_text(face = "bold", hjust = 0.5)) +
+  facet_wrap(~rank)
+```
+
+Из графиков видна тенденция, что средний балл и результаты GRE выше у поступивших, чем у не поступивших.
+
+Распределения средних оценок и баллов за GRE также сложно назвать нормальным. Практически во всех случаях наблюдается смещение оценок и баллов в сторону наиболее высоких.  
+
+# Строим модель
+```{r}
+mod <- glm(admit ~ gre * gpa * rank, data = data, family = binomial(link ='logit'))
+```
+
+## Упрощение модели
+```{r}
+Anova(mod)
+
+drop1(mod, test ='Chi')
+mod2 <-update(mod, .~.-gre:gpa:rank)
+
+drop1(mod2, test ='Chi')
+mod3 <-update(mod2, .~.-gre:rank)
+
+drop1(mod3, test ='Chi')
+mod4 <-update(mod3, .~.-gpa:rank)
+
+drop1(mod4, test ='Chi')
+mod5 <-update(mod4, .~.-gre:gpa)
+
+drop1(mod5, test ='Chi')
+
+# Смотрим на AIC моделей
+AIC(mod, mod2, mod3, mod4, mod5)
+```
+
+Возьмем `mod5` в качестве финальной модели.
+
+## Диагностика модели
+### Проверка на линейность
+```{r}
+mod5_diag <- data.frame(.fitted = fitted(mod5, type = 'response'),
+                        .resid_p = resid(mod5, type = 'pearson'))
+```
+
+```{r message=FALSE, warning=FALSE}
+ggplot(mod5_diag, aes(y = .resid_p, x = .fitted)) + 
+  geom_point() +
+  theme_bw() +
+  geom_hline(yintercept = 0) +  
+  geom_smooth()
+```
+
+Полагаю, что можно закрыть глаза на небольшую кривизну и считать связь линейной. 
+
+### Проверка на сверхдисперсию
+```{r}
+overdisp_fun <- function(model) {
+  rdf <- df.residual(model) 
+  if (any(class(model) == 'negbin')) rdf <- rdf - 1 
+  rp <- residuals(model,type='pearson')
+  Pearson.chisq <- sum(rp^2)
+  prat <- Pearson.chisq/rdf
+  pval <- pchisq(Pearson.chisq, df=rdf, lower.tail=FALSE)
+  c(chisq=Pearson.chisq,ratio=prat,rdf=rdf,p=pval)
+}
+
+overdisp_fun(mod5)
+```
+
+### Проверка на коллинеарность предикторов 
+```{r}
+p1 <- ggplot(data, aes(x = rank, y = gpa)) + 
+  geom_boxplot()
+
+p2 <- ggplot(data, aes(x = rank, y = gre)) + 
+  geom_boxplot()
+plot_grid(p1, p2)
+```
+
+Наблюдается некоторая коллинеарность в случае переменнной `gre`. В переменной `gpa` коллинеарности нет.
+
+### Трактовка коэффициентов.
+Теперь можем посмотреть на summary модели.
+```{r}
+summary(mod5)
+```
+При увеличении балла по GRE на единицу, шансы поступить увеличатся в e^0.002264 = 1.002267 раз. 
+
+При увеличении среднего балла по GPA на единицу, шансы поступить увеличатся в e^0.804038 = 2.234546 разa. 
+
+Шанс поступить в вуз ранга 2 в e^-0.675443 = 0.5089309 меньше, чем в вуз ранга 1.
+
+Шанс поступить в вуз ранга 3 в e^-1.340204 = 0.2617923 меньше, чем в вуз ранга 1.
+
+Шанс поступить в вуз ранга 4 в e^-1.551464 = 0.2119375 меньше, чем в вуз ранга 1.
+
+Вероятно, такие результаты модели получились из-за несбалансированности классов. Если мы посмотрим на процент непостопувших от общего числа абитуриентов в каждом вузе, то обнаружим, что процент непоступивших в менее престижные вузы будет больше, чем в более престижные. 
+```{r}
+classes <- as.matrix(table(data$admit, data$rank))
+classes[1,]/(classes[1,] + classes[2,]) * 100
+```
+
+
+# График предсказаний
+## График предсказаний от переменной GRE
+```{r}
+# Датасет для предсказаний от переменной GRE
+new_data <- data %>% group_by(rank) %>% do(data.frame(gre = seq(from = min(.$gre), to = max(.$gre), length.out = 100), gpa = mean(.$gpa)))
+
+# Модельная матрица и коэффициенты
+X <- model.matrix(~ gre + gpa + rank, data =  new_data)
+b <- coef(mod5)
+
+# Предсказанные значения и стандартные ошибки в масштабе функции связи
+new_data$fit_eta <- X %*% b
+new_data$se_eta <- sqrt(diag(X %*% vcov(mod5) %*% t(X)))
+
+# Предсказанные значения и стандартные ошибки в масштабе отклика
+logit_back <- function(x) exp(x)/(1 + exp(x))
+
+new_data$fit_pi <- logit_back(new_data$fit_eta)
+
+new_data$lwr_pi <- logit_back(new_data$fit_eta - 2 * new_data$se_eta)
+new_data$upr_pi <- logit_back(new_data$fit_eta + 2 * new_data$se_eta)
+```
+
+График предсказаний в масштабе функции связи.
+```{r message=FALSE, warning=FALSE}
+ggplot(new_data, aes(x = gre, y = fit_eta, fill = rank))  + 
+  geom_line(aes(color = rank)) +
+  geom_ribbon(aes(ymin = fit_eta - 2 * se_eta, ymax = fit_eta + 2 * se_eta), alpha = 0.3)+
+  labs(title = "График предсказаний в масштабе функции связи") + 
+  scale_fill_brewer(palette = "Set1", direction = -1) +
+  scale_color_brewer(palette = "Set1", direction = -1) +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+```
+
+График предсказаний в масштабе отклика.
+```{r message=FALSE, warning=FALSE}
+ggplot(new_data, aes(x = gre, y = fit_pi, fill = rank)) +
+  geom_ribbon(aes(ymin = lwr_pi, ymax = upr_pi), alpha = 0.3) +
+  geom_line(aes(color = rank)) +
+  labs(title = "График предсказаний в масштабе отклика", y = 'Вероятность', x = 'GRE') +
+  scale_fill_brewer(palette = "Set1", direction = -1) +
+  scale_color_brewer(palette = "Set1", direction = -1) + 
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+```
+
+## График предсказаний от переменной GPA
+```{r message=FALSE, warning=FALSE}
+# Датасет для предсказаний от переменной GPA
+new_data_2<- data %>% group_by(rank) %>% do(data.frame(gpa = seq(from = min(.$gpa), to = max(.$gpa), length.out = 100), gre = mean(.$gre)))
+
+## Предсказания модели при помощи операций с матрицами
+
+# Модельная матрица и коэффициенты
+X <- model.matrix(~ gre + gpa + rank, data =  new_data_2)
+b <- coef(mod5)
+
+# Предсказанные значения и стандартные ошибки в масштабе функции связи
+new_data_2$fit_eta <- X %*% b
+new_data_2$se_eta <- sqrt(diag(X %*% vcov(mod5) %*% t(X)))
+
+# Предсказанные значения и стандартные ошибки в масштабе отклика
+logit_back <- function(x) exp(x)/(1 + exp(x)) 
+
+new_data_2$fit_pi <- logit_back(new_data_2$fit_eta)
+
+new_data_2$lwr_pi <- logit_back(new_data_2$fit_eta - 2 * new_data_2$se_eta)
+new_data_2$upr_pi <- logit_back(new_data_2$fit_eta + 2 * new_data_2$se_eta)
+```
+
+График предсказаний в масштабе функции связи.
+```{r message=FALSE, warning=FALSE}
+ggplot(new_data_2, aes(x = gpa, y = fit_eta, fill = rank))  + 
+  geom_line(aes(color = rank)) +
+  geom_ribbon(aes(ymin = fit_eta - 2 * se_eta, ymax = fit_eta + 2 * se_eta), alpha = 0.3)+
+  labs(title = "График предсказаний в масштабе функции связи") + 
+  scale_fill_brewer(palette = "Set1", direction = -1) +
+  scale_color_brewer(palette = "Set1", direction = -1) +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+```
+
+График предсказаний в масштабе отклика.
+```{r}
+ggplot(new_data_2, aes(x = gpa, y = fit_pi, fill = rank)) +
+  geom_ribbon(aes(ymin = lwr_pi, ymax = upr_pi), alpha = 0.3) +
+  geom_line(aes(color = rank)) +
+  labs(title = "График предсказаний в масштабе отклика", y = 'Вероятность', x = 'GPA') +
+  scale_fill_brewer(palette = "Set1", direction = -1) +
+  scale_color_brewer(palette = "Set1", direction = -1) + 
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+```
+
+# Заключение
+Так как в данном датасете присутствуют явно несбалансированные классы, то, вероятно, это повлияло на предсказания логистической регрессии. Смущает то, что в менее престижный вуз тяжелее поступить, но возможно это можно объяснить тем, что количество мест в более престижных вузах ограничено, поэтому основное количество абитуриентов поступают в менее престижные вузы. 
+Тем не менее, это лишь спекуляция о том, почему такие результаты могли получиться. 
